@@ -1,5 +1,5 @@
 /**
- * @file trim_guage.h
+ * @file flaps_gauge.h
  *
  */
 
@@ -22,7 +22,7 @@ extern "C" {
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void trim_guage(void);
+void flaps_gauge(void);
 
 /**********************
  *      MACROS

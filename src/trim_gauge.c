@@ -1,5 +1,5 @@
 #include "lvgl.h"
-#include "trim_guage.h"
+#include "trim_gauge.h"
 
 static int32_t Trim_value = 5;
 static int8_t trim_step1 = 1;
@@ -35,9 +35,9 @@ static void trim_anim_timer_cb(lv_timer_t * timer1)
 }
 
 
-void trim_guage(void)
+void trim_gauge(void)
 {
-    // Set-create guage design
+    // Set-create gauge design
 
     // create 9 section horizontal rectangle aliron trim
     // Create the container

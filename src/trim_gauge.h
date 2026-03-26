@@ -1,5 +1,5 @@
 /**
- * @file fuel_guage.h
+ * @file trim_gauge.h
  *
  */
 
@@ -22,8 +22,7 @@ extern "C" {
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void fuel_guage1(void);
-void fuel_guage2(void);
+void trim_gauge(void);
 
 /**********************
  *      MACROS

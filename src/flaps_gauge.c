@@ -1,5 +1,5 @@
 #include "lvgl.h"
-#include "flaps_guage.h"
+#include "flaps_gauge.h"
 
 static int32_t Flaps_value = 5;
 static int8_t flaps_step1 = 1;
@@ -86,9 +86,9 @@ static void add_section(lv_obj_t * target_scale,
     lv_scale_set_section_style_main(target_scale, sec, &styles->main);
 }
 
-void flaps_guage(void)
+void flaps_gauge(void)
 {
-    // Set-create guage design
+    // Set-create gauge design
     scale1 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale1,LV_ALIGN_BOTTOM_RIGHT,0,0);
     lv_obj_set_size(scale1, 150, 150);

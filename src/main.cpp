@@ -10,9 +10,9 @@
 #include "AXS15231B_touch.h"
 #include <Arduino_GFX_Library.h>
 
-#include <fuel_guage.h>
-#include <flaps_guage.h>
-#include <trim_guage.h>
+#include <fuel_gauge.h>
+#include <flaps_gauge.h>
+#include <trim_gauge.h>
 
 //#define BLACK   0x0000
 //#define BLUE    0x001F
@@ -143,10 +143,10 @@ void setup() {
     //lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
 
-    fuel_guage1();
-    fuel_guage2();
-    flaps_guage();
-    trim_guage();
+    fuel_gauge1();
+    fuel_gauge2();
+    flaps_gauge();
+    trim_gauge();
 
 
 }

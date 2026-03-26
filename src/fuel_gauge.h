@@ -1,5 +1,5 @@
 /**
- * @file flaps_guage.h
+ * @file fuel_gauge.h
  *
  */
 
@@ -22,7 +22,8 @@ extern "C" {
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void flaps_guage(void);
+void fuel_gauge1(void);
+void fuel_gauge2(void);
 
 /**********************
  *      MACROS

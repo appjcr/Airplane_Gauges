@@ -1,5 +1,5 @@
 #include "lvgl.h"
-#include "fuel_guage.h"
+#include "fuel_gauge.h"
 
 static int32_t Fuel_L_value = 75;
 static int32_t Fuel_R_value = 50;
@@ -126,9 +126,9 @@ static void add_section(lv_obj_t * target_scale,
     lv_scale_set_section_style_main(target_scale, sec, &styles->main);
 }
 
-void fuel_guage1(void)
+void fuel_gauge1(void)
 {
-    // Set-create guage design
+    // Set-create gauge design
     scale1 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale1,LV_ALIGN_TOP_LEFT,30,30);
     lv_obj_set_size(scale1, 150, 150);
@@ -219,7 +219,7 @@ void fuel_guage1(void)
     lv_timer_create(fuel_left_anim_timer_cb, 500, NULL);
 }
 
-void fuel_guage2(void)
+void fuel_gauge2(void)
 {
     scale2 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale2,LV_ALIGN_TOP_RIGHT,-40,30);
