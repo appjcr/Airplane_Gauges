@@ -18,6 +18,7 @@ extern "C" {
 /**********************
  *      TYPEDEFS
  **********************/
+extern int32_t Flaps_position_value;
 
 /**********************
  * GLOBAL PROTOTYPES

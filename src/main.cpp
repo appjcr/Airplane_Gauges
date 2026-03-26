@@ -14,6 +14,8 @@
 #include <flaps_gauge.h>
 #include <trim_gauge.h>
 
+static int32_t hold_value=99;
+
 //#define BLACK   0x0000
 //#define BLUE    0x001F
 //#define RED     0xF800
@@ -146,14 +148,20 @@ void setup() {
     fuel_gauge1();
     fuel_gauge2();
     flaps_gauge();
-    trim_gauge();
+    //trim_gauge();
 
 
 }
 
 void loop() {
+    if(hold_value!=Flaps_position_value) {
+        hold_value=Flaps_position_value;
+        Serial.printf("Flaps position is: %d\n", Flaps_position_value);
+    }
+
     // Automatically calls lv_timer_handler() every 5ms
-    
     lv_timer_handler_run_in_period(5);
     gfx->flush();
+
+    // call additional sensors other things
 }
