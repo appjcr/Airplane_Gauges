@@ -164,4 +164,7 @@ void loop() {
     gfx->flush();
 
     // call additional sensors other things
+    // Temp delay for testing
+    //if(Flaps_position_value==0) delay(2000);
+
 }
