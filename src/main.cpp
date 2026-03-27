@@ -13,10 +13,12 @@
 #include <fuel_gauge.h>
 #include <flaps_gauge.h>
 #include <trim_gauge.h>
+#include <flow_gauge.h>
 
 static int32_t hold_value=99;
 static int32_t elev_hold_value=99;
 static int32_t ailer_hold_value=99;
+static int32_t flow_hold_value=99;
 
 //#define BLACK   0x0000
 //#define BLUE    0x001F
@@ -151,6 +153,7 @@ void setup() {
     fuel_gauge2();
     flaps_gauge();
     trim_gauge();
+    flow_gauge();
 
 
 }
@@ -160,13 +163,17 @@ void loop() {
     //    hold_value=Flaps_position_value;
     //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
     //}
-    if(elev_hold_value!=elev_trim_value) {
-        elev_hold_value=elev_trim_value;
-        Serial.printf("Elev trim position is: %d\n", elev_trim_value);
-    }
-    if(ailer_hold_value!=ailer_trim_value) {
-        ailer_hold_value=ailer_trim_value;
-        Serial.printf("Ailer trim position is: %d\n", ailer_trim_value);
+    //if(elev_hold_value!=elev_trim_value) {
+    //    elev_hold_value=elev_trim_value;
+    //    Serial.printf("Elev trim position is: %d\n", elev_trim_value);
+    //}
+    //if(ailer_hold_value!=ailer_trim_value) {
+    //    ailer_hold_value=ailer_trim_value;
+    //    Serial.printf("Ailer trim position is: %d\n", ailer_trim_value);
+    //}
+    if(flow_hold_value!=flow_value) {
+        flow_hold_value=flow_value;
+        Serial.printf("Flow value is: %d\n", flow_value);
     }
 
     // Automatically calls lv_timer_handler() every 5ms

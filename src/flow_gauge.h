@@ -26,7 +26,7 @@ extern int32_t time_to_empty_value;
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void trim_gauge(void);
+void flow_gauge(void);
 
 /**********************
  *      MACROS
