@@ -18,9 +18,9 @@ extern "C" {
 /**********************
  *      TYPEDEFS
  **********************/
-extern int32_t flow_value;
-extern int32_t remail_value;
-extern int32_t flow_used_value;
+extern float flow_value;
+extern float remail_value;
+extern float flow_used_value;
 extern int32_t time_to_empty_value;
 
 /**********************

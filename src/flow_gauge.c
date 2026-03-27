@@ -1,20 +1,21 @@
 #include "lvgl.h"
 #include "flow_gauge.h"
 
-int32_t flow_value = 0;
-int32_t remail_value = 0;
-int32_t flow_used_value = 0;
+float flow_value = 8.52f;
+float remain_value = 10.01f;
+float flow_used_value = 12.02f;
 int32_t time_to_empty_value = 0;
 
-
 static lv_obj_t * flow_value_label = NULL;
-static lv_obj_t * remail_value_label = NULL;
+static lv_obj_t * remain_value_label = NULL;
 static lv_obj_t * flow_used_value_label = NULL;
 static lv_obj_t * time_to_empty_value_label = NULL;
 static lv_obj_t * flow_label = NULL;
 static lv_obj_t * remain_label = NULL;
 static lv_obj_t * flow__used_label = NULL;
 static lv_obj_t * time_to_empty_label = NULL;
+static lv_obj_t * gph_label = NULL;
+static lv_obj_t * g_label = NULL;
 
 // Define ranges and structures
 #define MIN_VAL 0
@@ -57,16 +58,79 @@ void flow_gauge(void)
     lv_obj_align(cont,LV_ALIGN_BOTTOM_LEFT,0,0);
 
     flow_label = lv_label_create(cont);
-    lv_label_set_text(flow_label, "Elevator");
-    lv_obj_set_style_text_font(flow_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(flow_label, lv_palette_main(LV_PALETTE_GREY), 0);
-    lv_obj_align(flow_label, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_label_set_text(flow_label, "Flow:");
+    lv_obj_set_style_text_font(flow_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(flow_label, lv_color_white(), 0);
+    lv_obj_align(flow_label, LV_ALIGN_TOP_LEFT, 0, 4);
 
+    flow_value_label = lv_label_create(cont);
+    lv_label_set_text_fmt(flow_value_label, "%.2f", flow_value);
+    lv_obj_set_style_text_font(flow_value_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(flow_value_label, lv_color_white(), 0);
+    lv_obj_align(flow_value_label, LV_ALIGN_TOP_LEFT, 55, 0);
+
+    gph_label = lv_label_create(cont);
+    lv_label_set_text(gph_label, "gph");
+    lv_obj_set_style_text_font(gph_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(gph_label, lv_color_white(), 0);
+    lv_obj_align(gph_label, LV_ALIGN_TOP_LEFT, 100, 4);
+/*
     remain_label = lv_label_create(cont);
-    lv_label_set_text(remain_label, "Aileron");
-    lv_obj_set_style_text_font(remain_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(remain_label, lv_palette_main(LV_PALETTE_GREY), 0);
-    lv_obj_align(remain_label, LV_ALIGN_LEFT_MID, 0, 20);
+    lv_label_set_text(remain_label, "Rem: ");
+    lv_obj_set_style_text_font(remain_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(remain_label, lv_color_white(), 0);
+    lv_obj_align(remain_label, LV_ALIGN_TOP_LEFT, 0, 40);
+
+    remain_value_label = lv_label_create(cont);
+    lv_label_set_text_fmt(remain_value_label, "%" LV_PRId32, remain_value);
+    lv_obj_set_style_text_font(remain_value_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(remain_value_label, lv_color_white(), 0);
+    lv_obj_align(remain_value_label, LV_ALIGN_TOP_LEFT, 50, 40);
+
+    g_label = lv_label_create(cont);
+    lv_label_set_text(flow_label, " g");
+    lv_obj_set_style_text_font(flow_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(flow_label, lv_color_white(), 0);
+    lv_obj_align(flow_label, LV_ALIGN_TOP_LEFT, 90, 40);
+
+
+    flow__used_label = lv_label_create(cont);
+    lv_label_set_text(flow__used_label, "Used: ");
+    lv_obj_set_style_text_font(flow__used_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(flow__used_label, lv_color_white(), 0);
+    lv_obj_align(flow__used_label, LV_ALIGN_TOP_LEFT, 0, 80);
+
+    flow_used_value_label = lv_label_create(cont);
+    lv_label_set_text_fmt(flow_used_value_label, "%" LV_PRId32, flow_used_value);
+    lv_obj_set_style_text_font(flow_used_value_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(flow_used_value_label, lv_color_white(), 0);
+    lv_obj_align(flow_used_value_label, LV_ALIGN_TOP_LEFT, 50, 80);
+
+    lv_obj_t * g_label1 = lv_label_create(cont);
+    lv_label_set_text(g_label1, " g");
+    lv_obj_set_style_text_font(g_label1, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(g_label1, lv_color_white(), 0);
+    lv_obj_align(g_label1, LV_ALIGN_TOP_LEFT, 90, 80);
+
+    time_to_empty_label = lv_label_create(cont);
+    lv_label_set_text(time_to_empty_label, "T to E: ");
+    lv_obj_set_style_text_font(time_to_empty_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(time_to_empty_label, lv_color_white(), 0);
+    lv_obj_align(time_to_empty_label, LV_ALIGN_TOP_LEFT, 0, 120);
+
+    time_to_empty_value_label = lv_label_create(cont);
+    lv_label_set_text_fmt(time_to_empty_value_label, "%" LV_PRId32, time_to_empty_value);
+    lv_obj_set_style_text_font(time_to_empty_value_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(time_to_empty_value_label, lv_color_white(), 0);
+    lv_obj_align(time_to_empty_value_label, LV_ALIGN_TOP_LEFT, 50, 120);
+
+    gph_label = lv_label_create(cont);
+    lv_label_set_text(flow_label, " g");
+    lv_obj_set_style_text_font(flow_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(flow_label, lv_color_white(), 0);
+    lv_obj_align(flow_label, LV_ALIGN_TOP_LEFT, 90, 120);
+
+*/
 
     lv_timer_create(flow_anim_timer_cb, 1000, NULL);
 }
