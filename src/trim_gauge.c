@@ -1,113 +1,103 @@
 #include "lvgl.h"
 #include "trim_gauge.h"
 
-static int32_t Trim_value = 5;
-static int8_t trim_step1 = 1;
+int32_t elev_trim_value = 5;
+int32_t ailer_trim_value = 5;
 
+static lv_obj_t * elev_value_label = NULL;
+static lv_obj_t * ailer_value_label = NULL;
+static lv_obj_t * elev_label = NULL;
+static lv_obj_t * ailer_label = NULL;
+static lv_obj_t * elev_line = NULL;
+static lv_obj_t * ailer_line = NULL;
 
-static lv_obj_t * trim_value_label1 = NULL;
-static lv_obj_t * trim_label1 = NULL;
-static lv_obj_t * trim_value_label2 = NULL;
-static lv_obj_t * trim_label2 = NULL;
-
-
-
+// Define ranges and structures
+#define MIN_VAL 0
+#define MAX_VAL 100
+static int32_t counter = 0;
+static bool increasing = true;
 
 static void trim_anim_timer_cb(lv_timer_t * timer1)
 {
     LV_UNUSED(timer1);
 
-    Trim_value += trim_step1;
-
-    if(Trim_value >= 20) {
-        Trim_value = 20;
-        trim_step1 = -1;
+    if (increasing) {
+        counter++;
+        if (counter >= MAX_VAL) {
+            counter = MAX_VAL;
+            increasing = false; // Switch to descending
+        }
+    } else {
+        counter--;
+        if (counter <= MIN_VAL) {
+            counter = MIN_VAL;
+            increasing = true; // Switch to ascending
+        }
     }
-    else if(Trim_value <= 0) {
-        Trim_value = 0;
-        trim_step1 = 1;
-    }
 
+    elev_trim_value = counter;
+    ailer_trim_value = counter;
 
-    /* Update text color based on zone */
-    //lv_color_t zone_color = get_trim_zone_color(Trim_value);
-    //lv_obj_set_style_text_color(trim_value_label1, zone_color, 0);
+    // set elev trim position
+    lv_obj_set_pos(elev_line, 55, (elev_trim_value * 1.4));
+    // set ailer trim position
+    lv_obj_set_pos(ailer_line, (1.4 * ailer_trim_value), 55); 
+
 }
 
 
 void trim_gauge(void)
 {
     // Set-create gauge design
-
-    // create 9 section horizontal rectangle aliron trim
     // Create the container
-    lv_obj_t * horiz_rect = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(horiz_rect, 150, 50); // Narrow rectangle
-    //lv_obj_center(horiz_rect);
-    lv_obj_align(horiz_rect,LV_ALIGN_BOTTOM_MID,0,0);
+    lv_obj_t * cont = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(cont, 180, 180);
+    lv_obj_set_style_bg_color(cont, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(cont, 0, 0); // Remove border
+    lv_obj_align(cont,LV_ALIGN_BOTTOM_MID,0,0);
 
-    // Set white border and background style
-    lv_obj_set_style_border_color(horiz_rect, lv_palette_main(LV_PALETTE_GREY), 0); // Inner color
-    lv_obj_set_style_border_color(horiz_rect, lv_color_white(), 0); // White border
-    lv_obj_set_style_border_width(horiz_rect, 2, 0);
-    lv_obj_set_style_radius(horiz_rect, 0, 0); // Square corners
+    // Create Horizontal White Line
+    lv_obj_t * h_line = lv_obj_create(cont);
+    lv_obj_set_size(h_line, 140, 5);
+    lv_obj_set_style_bg_color(h_line, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_border_width(h_line, 0, 0); // Remove border
+    lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
 
-    // Define 9 sections (e.g., 9 columns)
-    static int32_t col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), 
-                                LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), 
-                                LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), 
-                                LV_GRID_TEMPLATE_LAST};
-    static int32_t row_dsc[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+    // Create Vertical White Line
+    lv_obj_t * v_line = lv_obj_create(cont);
+    lv_obj_set_size(v_line, 5, 140);
+    lv_obj_set_style_bg_color(v_line, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_border_width(v_line, 0, 0); // Remove border
+    lv_obj_align(v_line, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_set_grid_dsc_array(horiz_rect, col_dsc, row_dsc);
+    // Create elevator indicator
+    elev_line = lv_obj_create(cont);
+    lv_obj_set_size(elev_line, 40, 5);
+    lv_obj_set_style_bg_color(elev_line, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_set_style_border_width(elev_line, 0, 0); // Remove border
+    lv_obj_set_pos(elev_line, 55, 140); 
+    //lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
 
-    // Optionally, fill with items
-    for(int i = 0; i < 9; i++) {
-        lv_obj_t * label = lv_label_create(horiz_rect);
-        lv_label_set_text_fmt(label, "%d", i+1);
-        lv_obj_set_grid_cell(label, LV_GRID_ALIGN_CENTER, i, 1, LV_GRID_ALIGN_CENTER, 0, 1);
-    }
+    // Create aileron indicator
+    ailer_line = lv_obj_create(cont);
+    lv_obj_set_size(ailer_line, 5, 40);
+    lv_obj_set_style_bg_color(ailer_line, lv_palette_main(LV_PALETTE_YELLOW), 0);
+    lv_obj_set_style_border_width(ailer_line, 0, 0); // Remove border
+    lv_obj_set_pos(ailer_line, 140, 55); 
+    //lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
 
-    // create 9 section vertical rectangle elevator trim
-    // Create the vertical container
-    lv_obj_t * vert_rect = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(vert_rect, 50, 150); // Set narrow width, taller height
-    //lv_obj_center(vert_rect);
-    lv_obj_align(vert_rect,LV_ALIGN_BOTTOM_MID,0,0);
-    
-    // Remove padding and styling from main container to make children fit perfectly
-    lv_obj_set_style_pad_all(vert_rect, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_column(vert_rect, 0, LV_PART_MAIN); // No gap between sections
-    lv_obj_set_style_pad_row(vert_rect, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(vert_rect, 0, LV_PART_MAIN);
+    elev_label = lv_label_create(cont);
+    lv_label_set_text(elev_label, "Elevator");
+    lv_obj_set_style_text_font(elev_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(elev_label, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(elev_label, LV_ALIGN_BOTTOM_MID, 50, 0);
 
-    // --- Add White Border --- 
-    lv_obj_set_style_border_color(vert_rect, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(vert_rect, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(vert_rect, LV_OPA_COVER, LV_PART_MAIN);
+    ailer_label = lv_label_create(cont);
+    lv_label_set_text(ailer_label, "Aileron");
+    lv_obj_set_style_text_font(ailer_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(ailer_label, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(ailer_label, LV_ALIGN_LEFT_MID, 0, -30);
 
-    // Use Flex Layout to stack children vertically 
-    lv_obj_set_flex_flow(vert_rect, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(vert_rect, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    // --- Create 9 Sections --- 
-    for(int i = 0; i < 9; i++) {
-        lv_obj_t * vert_section = lv_obj_create(vert_rect);
-        
-        /* Each section takes 1/9th height (minus border spacing if needed) */
-        // lv_obj_set_size(section, LV_PCT(100), LV_PCT(11)); // Approx 9 sections
-        // Alternative: precise calculation
-        lv_obj_set_size(vert_section, lv_obj_get_content_width(vert_rect), lv_obj_get_content_height(vert_rect) / 9);
-        
-        lv_obj_set_style_radius(vert_section, 0, LV_PART_MAIN);
-        lv_obj_set_style_border_width(vert_section, 0, LV_PART_MAIN); // No border on inner sections
-
-        /* Example: Color the sections differently */
-        if(i % 2 == 0)
-            lv_obj_set_style_bg_color(vert_section, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
-        else
-            lv_obj_set_style_bg_color(vert_section, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
-    }
-
-    lv_timer_create(trim_anim_timer_cb, 500, NULL);
+    lv_timer_create(trim_anim_timer_cb, 1000, NULL);
 }

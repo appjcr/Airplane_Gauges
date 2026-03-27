@@ -128,20 +128,6 @@ void flaps_gauge(void)
             lv_obj_set_style_bg_color(line_group.lines[i], lv_palette_main(LV_PALETTE_ORANGE), 0);
         }
     }
-    //lv_obj_set_pos(line_group.lines[0], 20, -5);  
-    //lv_obj_set_pos(line_group.lines[1], 20, 6);  
-    //lv_obj_set_pos(line_group.lines[2], 20, 17);  
-    //lv_obj_set_pos(line_group.lines[3], 20, 28);  
-    //lv_obj_set_pos(line_group.lines[4], 20, 39);  
-    //lv_obj_set_pos(line_group.lines[5], 20, 50);  
-    //lv_obj_set_pos(line_group.lines[6], 20, 61);  
-    //lv_obj_set_pos(line_group.lines[7], 20, 72);  
-    //lv_obj_set_pos(line_group.lines[8], 20, 83);  
-    //lv_obj_set_pos(line_group.lines[9], 20, 94);  
-    //lv_obj_set_pos(line_group.lines[10], 20, 105);  
-
-
-
 
     flaps_label = lv_label_create(cont);
     lv_label_set_text(flaps_label, "F\nl\na\np\ns");
@@ -155,5 +141,5 @@ void flaps_gauge(void)
     lv_obj_set_style_text_color(flaps_up_label, lv_color_white(), 0);
     lv_obj_align(flaps_up_label, LV_ALIGN_CENTER, 0, -5);
 
-    lv_timer_create(flaps_anim_timer_cb, 500, NULL);
+    lv_timer_create(flaps_anim_timer_cb, 250, NULL);
 }

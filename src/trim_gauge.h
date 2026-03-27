@@ -18,6 +18,8 @@ extern "C" {
 /**********************
  *      TYPEDEFS
  **********************/
+extern int32_t elev_trim_value;
+extern int32_t ailer_trim_value;
 
 /**********************
  * GLOBAL PROTOTYPES
