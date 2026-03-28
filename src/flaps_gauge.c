@@ -78,8 +78,7 @@ void flaps_gauge(void)
     lv_obj_set_size(cont, 115, 150);
     lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(cont, 0, LV_PART_MAIN);
-    // Align to bottom-right with some padding (e.g., -10px)
-    lv_obj_align(cont, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_align(cont, LV_ALIGN_BOTTOM_RIGHT, -30, -15);
 
     // 2. Create the vertical scale (100px wide, 150px high, 0-20)
     lv_obj_t * scale = lv_scale_create(cont);
@@ -97,7 +96,7 @@ void flaps_gauge(void)
     lv_obj_set_style_pad_hor(scale, 10, LV_PART_MAIN); // Padding for labels
     lv_obj_set_style_length(scale, 5, LV_PART_INDICATOR); // Major tick length
     lv_obj_set_style_length(scale, 0, LV_PART_ITEMS); // Minor tick length
-    lv_obj_align(scale, LV_ALIGN_BOTTOM_RIGHT, -10, 0);
+    lv_obj_align(scale, LV_ALIGN_BOTTOM_RIGHT, -5, 0);
 
     // Style for all lines (35px width, 10px height, no border)
     static lv_style_t style_line;

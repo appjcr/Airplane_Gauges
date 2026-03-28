@@ -88,13 +88,13 @@ void trim_gauge(void)
     //lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
 
     elev_label = lv_label_create(cont);
-    lv_label_set_text(elev_label, "Elevator");
+    lv_label_set_text(elev_label, "Elev");
     lv_obj_set_style_text_font(elev_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(elev_label, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(elev_label, LV_ALIGN_BOTTOM_MID, 50, 0);
 
     ailer_label = lv_label_create(cont);
-    lv_label_set_text(ailer_label, "Aileron");
+    lv_label_set_text(ailer_label, "Ailr");
     lv_obj_set_style_text_font(ailer_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(ailer_label, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(ailer_label, LV_ALIGN_LEFT_MID, 0, -30);

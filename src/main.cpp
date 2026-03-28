@@ -15,25 +15,18 @@
 #include <trim_gauge.h>
 #include <flow_gauge.h>
 
-static int32_t hold_value=99;
-static int32_t elev_hold_value=99;
-static int32_t ailer_hold_value=99;
-static int32_t flow_hold_value=99;
-
-//#define BLACK   0x0000
-//#define BLUE    0x001F
-//#define RED     0xF800
-//#define GREEN   0x07E0
-//#define CYAN    0x07FF
-//#define MAGENTA 0xF81F
-//#define YELLOW  0xFFE0
-//#define WHITE   0xFFFF
-
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(TFT_CS, TFT_SCK, TFT_SDA0, TFT_SDA1, TFT_SDA2, TFT_SDA3);
 Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, TFT_res_W, TFT_res_H);
 Arduino_Canvas *gfx = new Arduino_Canvas(TFT_res_W, TFT_res_H, g, 0, 0, TFT_rot);
 AXS15231B_Touch touch(Touch_SCL, Touch_SDA, Touch_INT, Touch_ADDR, TFT_rot);
 
+static int32_t hold_value=99;
+static int32_t fuel_l_hold_value=99;
+static int32_t fuel_r_hold_value=99;
+static int32_t flaps_hold_value=99;
+static int32_t elev_hold_value=99;
+static int32_t ailer_hold_value=99;
+static int32_t flow_hold_value=99;
 
 #if LV_USE_LOG != 0
 // Log to serial console
@@ -159,6 +152,14 @@ void setup() {
 }
 
 void loop() {
+    //Serial.printf("Sensor value flaps is: %d\n on pin A2", value[2]);
+    //delay(1000);
+
+    //if(hold_value!=Flaps_position_value) {
+    //    hold_value=Flaps_position_value;
+    //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
+    //}
+
     //if(hold_value!=Flaps_position_value) {
     //    hold_value=Flaps_position_value;
     //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
@@ -171,10 +172,10 @@ void loop() {
     //    ailer_hold_value=ailer_trim_value;
     //    Serial.printf("Ailer trim position is: %d\n", ailer_trim_value);
     //}
-    if(flow_hold_value!=flow_value) {
-        flow_hold_value=flow_value;
-        Serial.printf("Flow value is: %d\n", flow_value);
-    }
+    //if(flow_hold_value!=flow_value) {
+    //    flow_hold_value=flow_value;
+    //    Serial.printf("Flow value is: %d\n", flow_value);
+    //}
 
     // Automatically calls lv_timer_handler() every 5ms
     lv_timer_handler_run_in_period(5);
