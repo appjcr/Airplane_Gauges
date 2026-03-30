@@ -24,7 +24,7 @@ extern int32_t ailer_trim_value;
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void trim_gauge(void);
+void trim_gauge(int gauge_timer_value);
 
 /**********************
  *      MACROS

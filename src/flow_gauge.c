@@ -48,7 +48,7 @@ static void flow_anim_timer_cb(lv_timer_t * timer1)
 }
 
 
-void flow_gauge(void)
+void flow_gauge(int gauge_timer_value)
 {
     // Set-create gauge design
     // Create the container
@@ -125,5 +125,5 @@ void flow_gauge(void)
     lv_obj_set_style_text_color(time_to_empty_value_label, lv_color_white(), 0);
     lv_obj_align(time_to_empty_value_label, LV_ALIGN_TOP_LEFT, 45, 120);
 
-    lv_timer_create(flow_anim_timer_cb, 1000, NULL);
+    lv_timer_create(flow_anim_timer_cb, gauge_timer_value, NULL);
 }

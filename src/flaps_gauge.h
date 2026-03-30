@@ -23,7 +23,7 @@ extern int32_t Flaps_position_value;
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
-void flaps_gauge(void);
+void flaps_gauge(int gauge_timer_value);
 
 /**********************
  *      MACROS

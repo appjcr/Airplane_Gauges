@@ -10,10 +10,40 @@
 #include "AXS15231B_touch.h"
 #include <Arduino_GFX_Library.h>
 
+#include <Wire.h>
+#include <Adafruit_ADS7830.h>
+Adafruit_ADS7830 ad7830;
+
 #include <fuel_gauge.h>
 #include <flaps_gauge.h>
 #include <trim_gauge.h>
 #include <flow_gauge.h>
+
+// Define I2C pins
+#define I2C_SDA 18
+#define I2C_SCL 17
+
+const int sensorPin = 2; // Pin with Interrupt
+volatile long pulseCount = 0;
+float flowRate = 0.0;
+unsigned int flowMilliLitres = 0;
+unsigned long totalMilliLitres = 0;
+unsigned long oldTime = 0;
+
+uint8_t value[7];
+
+const int numReadings_L = 50; // Number of samples for average
+int readings_L[numReadings_L];  // Array to store readings
+int readIndex_L = 0;          // Current index in array
+long total_L = 0;             // Running total
+int averageFuel_L = 0;        // Final average
+
+const int numReadings_R = 50; // Number of samples for average
+int readings_R[numReadings_R];  // Array to store readings
+int readIndex_R = 0;          // Current index in array
+long total_R = 0;             // Running total
+int averageFuel_R = 0;        // Final average
+
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(TFT_CS, TFT_SCK, TFT_SDA0, TFT_SDA1, TFT_SDA2, TFT_SDA3);
 Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, TFT_res_W, TFT_res_H);
@@ -67,6 +97,79 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
+}
+
+int32_t smooth_fuel_readings_L (int32_t read_fuel_value_L ) {
+    total_L = total_L - readings_L[readIndex_L];
+    readings_L[readIndex_L] = read_fuel_value_L;
+    total_L = total_L + readings_L[readIndex_L];
+    readIndex_L = readIndex_L + 1;
+    if (readIndex_L >= numReadings_L) readIndex_L = 0;
+    averageFuel_L = total_L / numReadings_L;
+    Serial.print("Smoothed Level left: ");
+    Serial.println(averageFuel_L);
+    return(averageFuel_L);
+}
+
+int32_t smooth_fuel_readings_R (int32_t read_fuel_value_R ) {
+    total_R = total_R - readings_R[readIndex_R];
+    readings_R[readIndex_R] = read_fuel_value_R;
+    total_R = total_R + readings_R[readIndex_R];
+    readIndex_R = readIndex_R + 1;
+    if (readIndex_R >= numReadings_R) readIndex_R = 0;
+    averageFuel_R = total_R / numReadings_R;
+    Serial.print("Smoothed Level right: ");
+    Serial.println(averageFuel_R);
+    return(averageFuel_R);
+}
+
+static void sensors_timer_cb(lv_timer_t * timer1)
+{
+    LV_UNUSED(timer1);
+    // read sensors
+    Fuel_L_value = smooth_fuel_readings_L(ad7830.readADCsingle(0));
+    Serial.printf("Fuel_L_value: %" PRId32 "\n", Fuel_L_value);
+
+    Fuel_R_value = smooth_fuel_readings_R(ad7830.readADCsingle(1));
+    Serial.printf("Fuel_R_value: %" PRId32 "\n", Fuel_R_value);
+
+    elev_trim_value = ad7830.readADCsingle(2);
+    Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
+
+    ailer_trim_value = ad7830.readADCsingle(3);
+    Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
+
+    Flaps_position_value = ad7830.readADCsingle(4);
+    Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
+
+}
+
+
+void pulseCounter() {
+  pulseCount++;
+}
+
+static void flow_sensor_timer_cb(lv_timer_t * timer1) {
+    detachInterrupt(digitalPinToInterrupt(sensorPin));
+    
+    // Formula: Freq / 7.5 = L/min
+    flowRate = ((1000.0 / (millis() - oldTime)) * pulseCount) / 7.5;
+    oldTime = millis();
+    
+    flowMilliLitres = (flowRate / 60) * 1000;
+    totalMilliLitres += flowMilliLitres;
+    
+    Serial.print("Flow Rate: ");
+    Serial.print(flowRate);
+    Serial.print(" L/min");
+    Serial.print("\tTotal: ");
+    Serial.print(totalMilliLitres);
+    Serial.println(" mL");
+
+    flow_value= flowRate;
+    
+    pulseCount = 0;
+    attachInterrupt(digitalPinToInterrupt(sensorPin), pulseCounter, FALLING);
 }
 
 void setup() {
@@ -135,31 +238,44 @@ void setup() {
     lv_obj_set_style_bg_color(scr, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Serial.println("Adafruit ADS7830 start\n");
+    if (!ad7830.begin()) {
+        Serial.println("Failed to initialize ADS7830!\n");
+        while (1);
+    }
+    // Create timer to run the sensors for fuel, flap, trim
+    lv_timer_create(sensors_timer_cb, 100, NULL);
 
-    /* Option 1: Create a simple label */
-    //lv_obj_t *label = lv_label_create(lv_scr_act());
-    //lv_label_set_text(label, "Hello Arduino, I'm LVGL!(V" GFX_STR(LVGL_VERSION_MAJOR) "." GFX_STR(LVGL_VERSION_MINOR) "." GFX_STR (LVGL_VERSION_PATCH) ")");
-    //lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    pinMode(sensorPin, INPUT);
+    // Trigger pulseCounter function on falling edge
+    attachInterrupt(digitalPinToInterrupt(sensorPin), pulseCounter, FALLING);
+    // Create the timer to run the flow sensor
+    lv_timer_create(flow_sensor_timer_cb, 1000, NULL);
 
+    // Initialize all Fuel readings to 0
+    for (int i = 0; i < numReadings_L; i++) readings_L[i] = 0;
+    for (int i = 0; i < numReadings_R; i++) readings_R[i] = 0;
 
-    fuel_gauge1();
-    fuel_gauge2();
-    flaps_gauge();
-    trim_gauge();
-    flow_gauge();
+    // Update display Fuel left gauge every 500ms
+    fuel_gaugeL(500);
+    // Update display Fuel right gauge every 500ms
+    fuel_gaugeR(500);
+    // Update display Flaps gauge every 250ms
+    flaps_gauge(250);
+    // Update display Trim every 500ms
+    trim_gauge(500);
+    // Update display Flow gauge every 1000ms
+    flow_gauge(1000);
 
 
 }
 
 void loop() {
-    //Serial.printf("Sensor value flaps is: %d\n on pin A2", value[2]);
-    //delay(1000);
-
     //if(hold_value!=Flaps_position_value) {
     //    hold_value=Flaps_position_value;
     //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
     //}
-
     //if(hold_value!=Flaps_position_value) {
     //    hold_value=Flaps_position_value;
     //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
@@ -177,12 +293,9 @@ void loop() {
     //    Serial.printf("Flow value is: %d\n", flow_value);
     //}
 
+
     // Automatically calls lv_timer_handler() every 5ms
     lv_timer_handler_run_in_period(5);
     gfx->flush();
-
-    // call additional sensors other things
-    // Temp delay for testing
-    //if(Flaps_position_value==0) delay(2000);
 
 }

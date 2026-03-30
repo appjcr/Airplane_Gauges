@@ -45,8 +45,7 @@ static void trim_anim_timer_cb(lv_timer_t * timer1)
 
 }
 
-
-void trim_gauge(void)
+void trim_gauge(int gauge_timer_value)
 {
     // Set-create gauge design
     // Create the container
@@ -99,5 +98,5 @@ void trim_gauge(void)
     lv_obj_set_style_text_color(ailer_label, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(ailer_label, LV_ALIGN_LEFT_MID, 0, -30);
 
-    lv_timer_create(trim_anim_timer_cb, 1000, NULL);
+    lv_timer_create(trim_anim_timer_cb, gauge_timer_value, NULL);
 }

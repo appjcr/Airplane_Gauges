@@ -1,8 +1,8 @@
 #include "lvgl.h"
 #include "fuel_gauge.h"
 
-static int32_t Fuel_L_value = 75;
-static int32_t Fuel_R_value = 50;
+int32_t Fuel_L_value = 0;
+int32_t Fuel_R_value = 0;
 static int8_t fuel_step1 = 1;
 static int8_t fuel_step2 = 1;
 
@@ -126,7 +126,7 @@ static void add_section(lv_obj_t * target_scale,
     lv_scale_set_section_style_main(target_scale, sec, &styles->main);
 }
 
-void fuel_gauge1(void)
+void fuel_gaugeL(int gaugeL_timer_value)
 {
     // Set-create gauge design
     scale1 = lv_scale_create(lv_screen_active());
@@ -216,10 +216,10 @@ void fuel_gauge1(void)
     lv_color_t zone_color = get_fuel_zone_color(current_hr1);
     lv_obj_set_style_text_color(fuel_value_label1, zone_color, 0);
 
-    lv_timer_create(fuel_left_anim_timer_cb, 500, NULL);
+    lv_timer_create(fuel_left_anim_timer_cb, gaugeL_timer_value, NULL);
 }
 
-void fuel_gauge2(void)
+void fuel_gaugeR(int gaugeR_timer_value)
 {
     scale2 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale2,LV_ALIGN_TOP_RIGHT,-40,30);
@@ -309,5 +309,5 @@ void fuel_gauge2(void)
     lv_obj_set_style_text_color(fuel_value_label2, zone_color, 0);
     lv_obj_set_style_text_color(fuel_tank_label2, lv_color_white(), 0);
 
-    lv_timer_create(fuel_right_anim_timer_cb, 500, NULL);
+    lv_timer_create(fuel_right_anim_timer_cb, gaugeR_timer_value, NULL);
 }

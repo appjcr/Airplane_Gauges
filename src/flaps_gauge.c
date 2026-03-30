@@ -71,7 +71,7 @@ static void flaps_anim_timer_cb(lv_timer_t * timer1)
     
 }
 
-void flaps_gauge(void)
+void flaps_gauge(int gauge_timer_value)
 {
     // 1. Create the container (transparent, no border, bottom-right)
     lv_obj_t * cont = lv_obj_create(lv_screen_active());
@@ -140,5 +140,5 @@ void flaps_gauge(void)
     lv_obj_set_style_text_color(flaps_up_label, lv_color_white(), 0);
     lv_obj_align(flaps_up_label, LV_ALIGN_CENTER, 0, -5);
 
-    lv_timer_create(flaps_anim_timer_cb, 250, NULL);
+    lv_timer_create(flaps_anim_timer_cb, gauge_timer_value, NULL);
 }
