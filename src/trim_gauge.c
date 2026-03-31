@@ -1,8 +1,10 @@
 #include "lvgl.h"
 #include "trim_gauge.h"
 
-int32_t elev_trim_value = 5;
-int32_t ailer_trim_value = 5;
+int32_t elev_trim_value = 0;
+int32_t ailer_trim_value = 0;
+int32_t old_elev_trim_value = -1;
+int32_t old_ailer_trim_value = -1;
 
 static lv_obj_t * elev_value_label = NULL;
 static lv_obj_t * ailer_value_label = NULL;
@@ -11,42 +13,25 @@ static lv_obj_t * ailer_label = NULL;
 static lv_obj_t * elev_line = NULL;
 static lv_obj_t * ailer_line = NULL;
 
-// Define ranges and structures
-#define MIN_VAL 0
-#define MAX_VAL 100
-static int32_t counter = 0;
-static bool increasing = true;
 
 static void trim_anim_timer_cb(lv_timer_t * timer1)
 {
     LV_UNUSED(timer1);
-
-    if (increasing) {
-        counter++;
-        if (counter >= MAX_VAL) {
-            counter = MAX_VAL;
-            increasing = false; // Switch to descending
-        }
-    } else {
-        counter--;
-        if (counter <= MIN_VAL) {
-            counter = MIN_VAL;
-            increasing = true; // Switch to ascending
-        }
+    if (old_elev_trim_value != elev_trim_value) {
+        old_elev_trim_value=elev_trim_value;
+        // set elev trim position
+        lv_obj_set_pos(elev_line, 55, (elev_trim_value * 1.4));
     }
-
-    elev_trim_value = counter;
-    ailer_trim_value = counter;
-
-    // set elev trim position
-    lv_obj_set_pos(elev_line, 55, (elev_trim_value * 1.4));
-    // set ailer trim position
-    lv_obj_set_pos(ailer_line, (1.4 * ailer_trim_value), 55); 
-
+    if (old_ailer_trim_value!=ailer_trim_value) {
+        old_ailer_trim_value=ailer_trim_value;
+        // set ailer trim position
+        lv_obj_set_pos(ailer_line, (1.4 * ailer_trim_value), 55); 
+    }
 }
 
 void trim_gauge(int gauge_timer_value)
 {
+    //Expecting value range from 0-20 in elev_trim_value and ailer_trim_value
     // Set-create gauge design
     // Create the container
     lv_obj_t * cont = lv_obj_create(lv_screen_active());

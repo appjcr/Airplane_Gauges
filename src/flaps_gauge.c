@@ -9,70 +9,51 @@ typedef struct {
 // Create container and store line references
 line_array_t line_group;
 
-int32_t Flaps_position_value=5;
+int32_t Flaps_position_value = 0;
+int32_t old_Flaps_position_value = -1;
 
 static lv_obj_t * flaps_label = NULL;
 static lv_obj_t * flaps_up_label = NULL;
-
-// Define ranges and structures
-#define MIN_VAL 0
-#define MAX_VAL 20
-static int32_t counter = 0;
-static bool increasing = true;
 
 static const char * custom_labels1[] = {"20", "15", "10", "5", "0", NULL};
 
 static void flaps_anim_timer_cb(lv_timer_t * timer1)
 {
     LV_UNUSED(timer1);
-    if (increasing) {
-        counter++;
-        if (counter >= MAX_VAL) {
-            counter = MAX_VAL;
-            increasing = false; // Switch to descending
-        }
-    } else {
-        counter--;
-        if (counter <= MIN_VAL) {
-            counter = MIN_VAL;
-            increasing = true; // Switch to ascending
-        }
+
+    if (old_Flaps_position_value!=Flaps_position_value) {
+        old_Flaps_position_value=Flaps_position_value;
+        //  Show "UP" when position is 0
+        if (Flaps_position_value==0) lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
+        // Show lines as flaps are lowered
+        if (Flaps_position_value>0) lv_obj_remove_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=2) lv_obj_remove_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=4) lv_obj_remove_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=6) lv_obj_remove_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=8) lv_obj_remove_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=10) lv_obj_remove_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=12) lv_obj_remove_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=14) lv_obj_remove_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=16) lv_obj_remove_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=18) lv_obj_remove_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value>=20) lv_obj_remove_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
     }
-
-    Flaps_position_value = counter;
-
-    //  Show "UP" when position is 0
-    if (Flaps_position_value==0) lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-
-    // Show lines as flaps are lowered
-    if (Flaps_position_value>0) lv_obj_remove_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=2) lv_obj_remove_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=4) lv_obj_remove_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=6) lv_obj_remove_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=8) lv_obj_remove_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=10) lv_obj_remove_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=12) lv_obj_remove_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=14) lv_obj_remove_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=16) lv_obj_remove_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=18) lv_obj_remove_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value>=20) lv_obj_remove_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
-    
 }
 
-void flaps_gauge(int gauge_timer_value)
-{
+void flaps_gauge(int gauge_timer_value) {
+    // Expecting value ranges from 0-20 in Flaps_position_value
     // 1. Create the container (transparent, no border, bottom-right)
     lv_obj_t * cont = lv_obj_create(lv_screen_active());
     lv_obj_set_size(cont, 115, 150);

@@ -4,26 +4,29 @@
    You also need to copy 'lvgl/examples' to 'lvgl/src/examples'. Similarly for the demos 'lvgl/demos' to 'lvgl/src/demos'.
 */
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_ADS7830.h>
+Adafruit_ADS7830 ad7830;
+
 #include <lvgl.h>
 #include "pincfg.h"
 #include "dispcfg.h"
 #include "AXS15231B_touch.h"
 #include <Arduino_GFX_Library.h>
 
-#include <Wire.h>
-#include <Adafruit_ADS7830.h>
-Adafruit_ADS7830 ad7830;
 
 #include <fuel_gauge.h>
 #include <flaps_gauge.h>
 #include <trim_gauge.h>
 #include <flow_gauge.h>
 
+bool first_time = true;
+
 // Define I2C pins
 #define I2C_SDA 18
 #define I2C_SCL 17
 
-const int sensorPin = 2; // Pin with Interrupt
+const int sensorPin = 6; // Pin with Interrupt for flow meter
 volatile long pulseCount = 0;
 float flowRate = 0.0;
 unsigned int flowMilliLitres = 0;
@@ -31,6 +34,15 @@ unsigned long totalMilliLitres = 0;
 unsigned long oldTime = 0;
 
 uint8_t value[7];
+
+int16_t Empty_fuel_resistance_value = 67;
+int16_t Full_fuel_resistance_value = 13;
+int16_t Empty_flaps_resistance_value = 67;
+int16_t Full_flaps_resistance_value = 13;
+int16_t Empty_elev_resistance_value = 67;
+int16_t Full_elev_resistance_value = 13;
+int16_t Empty_ailer_resistance_value = 67;
+int16_t Full_ailer_resistance_value = 13;
 
 const int numReadings_L = 50; // Number of samples for average
 int readings_L[numReadings_L];  // Array to store readings
@@ -106,8 +118,6 @@ int32_t smooth_fuel_readings_L (int32_t read_fuel_value_L ) {
     readIndex_L = readIndex_L + 1;
     if (readIndex_L >= numReadings_L) readIndex_L = 0;
     averageFuel_L = total_L / numReadings_L;
-    Serial.print("Smoothed Level left: ");
-    Serial.println(averageFuel_L);
     return(averageFuel_L);
 }
 
@@ -118,8 +128,6 @@ int32_t smooth_fuel_readings_R (int32_t read_fuel_value_R ) {
     readIndex_R = readIndex_R + 1;
     if (readIndex_R >= numReadings_R) readIndex_R = 0;
     averageFuel_R = total_R / numReadings_R;
-    Serial.print("Smoothed Level right: ");
-    Serial.println(averageFuel_R);
     return(averageFuel_R);
 }
 
@@ -128,19 +136,42 @@ static void sensors_timer_cb(lv_timer_t * timer1)
     LV_UNUSED(timer1);
     // read sensors
     Fuel_L_value = smooth_fuel_readings_L(ad7830.readADCsingle(0));
+    Serial.printf("Raw smoothed sensor L value: %" PRId32 "\n", Fuel_L_value);
+    if(Fuel_L_value < Full_fuel_resistance_value) Fuel_L_value = Full_fuel_resistance_value;
+    if(Fuel_L_value > Empty_fuel_resistance_value) Fuel_L_value = Empty_fuel_resistance_value;
+    Fuel_L_value = (int32_t)round((Fuel_L_value-13)*1.851);  // normalize the range 0-100
+    Fuel_L_value = 100 -Fuel_L_value;  // Reverse the range
     Serial.printf("Fuel_L_value: %" PRId32 "\n", Fuel_L_value);
 
     Fuel_R_value = smooth_fuel_readings_R(ad7830.readADCsingle(1));
+    Serial.printf("Raw smoothed sensor R value: %" PRId32 "\n", Fuel_R_value);
+    if(Fuel_R_value < Full_fuel_resistance_value) Fuel_R_value = Full_fuel_resistance_value;
+    if(Fuel_R_value > Empty_fuel_resistance_value) Fuel_R_value = Empty_fuel_resistance_value;
+    Fuel_R_value = (int32_t)round((Fuel_R_value-13)*1.851);  // normalize the range 0-100
+    Fuel_R_value = 100 - Fuel_R_value;  // Reverse the range
     Serial.printf("Fuel_R_value: %" PRId32 "\n", Fuel_R_value);
 
-    elev_trim_value = ad7830.readADCsingle(2);
+    Flaps_position_value = ad7830.readADCsingle(2);
+    if(Flaps_position_value < Full_flaps_resistance_value) Flaps_position_value = Full_flaps_resistance_value;
+    if(Flaps_position_value > Empty_flaps_resistance_value) Flaps_position_value = Empty_flaps_resistance_value;
+    Flaps_position_value = (int32_t)round((Fuel_R_value-13)*1.851);  // normalize the range 0-20
+    Flaps_position_value = 20 - Flaps_position_value;  // Reverse the range
+    Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
+
+    elev_trim_value = ad7830.readADCsingle(3);
+    if(elev_trim_value < Full_flaps_resistance_value) elev_trim_value = Full_flaps_resistance_value;
+    if(elev_trim_value > Empty_flaps_resistance_value) elev_trim_value = Empty_flaps_resistance_value;
+    elev_trim_value = (int32_t)round((elev_trim_value-13)*1.851);  // normalize the range 0-20
+    elev_trim_value = 20 - elev_trim_value;  // Reverse the range
     Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 
-    ailer_trim_value = ad7830.readADCsingle(3);
+    ailer_trim_value = ad7830.readADCsingle(4);
+    if(ailer_trim_value < Full_flaps_resistance_value) ailer_trim_value = Full_flaps_resistance_value;
+    if(ailer_trim_value > Empty_flaps_resistance_value) ailer_trim_value = Empty_flaps_resistance_value;
+    ailer_trim_value = (int32_t)round((ailer_trim_value-13)*1.851);  // normalize the range 0-20
+    ailer_trim_value = 20 - ailer_trim_value;  // Reverse the range
     Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
-    Flaps_position_value = ad7830.readADCsingle(4);
-    Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
 }
 
@@ -173,12 +204,19 @@ static void flow_sensor_timer_cb(lv_timer_t * timer1) {
 }
 
 void setup() {
-//    delay(10000);
+    delay(5000);
     #ifdef ARDUINO_USB_CDC_ON_BOOT
     delay(2000);
     #endif
 
     Serial.begin(115200);
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Serial.println("Adafruit ADS7830 start\n");
+    if (!ad7830.begin()) {
+        Serial.println("Failed to initialize ADS7830!\n");
+        while(1);
+    }
+
     Serial.println("Arduino_GFX LVGL ");
     String LVGL_Arduino = String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch() + " example";
     Serial.println(LVGL_Arduino);
@@ -238,20 +276,9 @@ void setup() {
     lv_obj_set_style_bg_color(scr, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 
-    Wire.begin(I2C_SDA, I2C_SCL);
-    Serial.println("Adafruit ADS7830 start\n");
-    if (!ad7830.begin()) {
-        Serial.println("Failed to initialize ADS7830!\n");
-        while (1);
-    }
-    // Create timer to run the sensors for fuel, flap, trim
-    lv_timer_create(sensors_timer_cb, 100, NULL);
-
     pinMode(sensorPin, INPUT);
     // Trigger pulseCounter function on falling edge
     attachInterrupt(digitalPinToInterrupt(sensorPin), pulseCounter, FALLING);
-    // Create the timer to run the flow sensor
-    lv_timer_create(flow_sensor_timer_cb, 1000, NULL);
 
     // Initialize all Fuel readings to 0
     for (int i = 0; i < numReadings_L; i++) readings_L[i] = 0;
@@ -272,27 +299,19 @@ void setup() {
 }
 
 void loop() {
-    //if(hold_value!=Flaps_position_value) {
-    //    hold_value=Flaps_position_value;
-    //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
-    //}
-    //if(hold_value!=Flaps_position_value) {
-    //    hold_value=Flaps_position_value;
-    //    Serial.printf("Flaps position is: %d\n", Flaps_position_value);
-    //}
-    //if(elev_hold_value!=elev_trim_value) {
-    //    elev_hold_value=elev_trim_value;
-    //    Serial.printf("Elev trim position is: %d\n", elev_trim_value);
-    //}
-    //if(ailer_hold_value!=ailer_trim_value) {
-    //    ailer_hold_value=ailer_trim_value;
-    //    Serial.printf("Ailer trim position is: %d\n", ailer_trim_value);
-    //}
+    if (first_time==true) {
+        first_time=false;
+        // Create timer to run the sensors for fuel, flap, trim
+        lv_timer_create(sensors_timer_cb, 100, NULL);
+        // Create the timer to run the flow sensor
+        lv_timer_create(flow_sensor_timer_cb, 1000, NULL);
+
+    }
+
     //if(flow_hold_value!=flow_value) {
     //    flow_hold_value=flow_value;
     //    Serial.printf("Flow value is: %d\n", flow_value);
     //}
-
 
     // Automatically calls lv_timer_handler() every 5ms
     lv_timer_handler_run_in_period(5);

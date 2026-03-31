@@ -3,8 +3,8 @@
 
 int32_t Fuel_L_value = 0;
 int32_t Fuel_R_value = 0;
-static int8_t fuel_step1 = 1;
-static int8_t fuel_step2 = 1;
+int32_t old_Fuel_L_value = -1;
+int32_t old_Fuel_R_value = -1;
 
 static const char * custom_labels1[] = {"E", "1/4", "1/2", "3/4", "F", NULL};
 static const char * custom_labels2[] = {"E", "1/4", "1/2", "3/4", "F", NULL};
@@ -46,55 +46,33 @@ static lv_color_t get_fuel_zone_color(int32_t hr)
 static void fuel_left_anim_timer_cb(lv_timer_t * timer1)
 {
     LV_UNUSED(timer1);
-
-    Fuel_L_value += fuel_step1;
-
-    if(Fuel_L_value >= 100) {
-        Fuel_L_value = 100;
-        fuel_step1 = -1;
+    if (old_Fuel_L_value!=Fuel_L_value) {
+        old_Fuel_L_value=Fuel_L_value;
+        /* Update needle */
+        lv_scale_set_line_needle_value(scale1, needle_line1, 100, Fuel_L_value);
+        /* Update Fuel percentage text */
+        lv_label_set_text_fmt(fuel_value_label1, "%d%%", Fuel_L_value);
+        /* Update text color based on zone */
+        lv_color_t zone_color = get_fuel_zone_color(Fuel_L_value);
+        lv_obj_set_style_text_color(fuel_value_label1, zone_color, 0);
+        //lv_obj_set_style_text_color(fuel_tank_label, zone_color, 0);
     }
-    else if(Fuel_L_value <= 0) {
-        Fuel_L_value = 0;
-        fuel_step1 = 1;
-    }
-
-    /* Update needle */
-    lv_scale_set_line_needle_value(scale1, needle_line1, 100, Fuel_L_value);
-
-    /* Update Fuel percentage text */
-    lv_label_set_text_fmt(fuel_value_label1, "%d%%", Fuel_L_value);
-
-    /* Update text color based on zone */
-    lv_color_t zone_color = get_fuel_zone_color(Fuel_L_value);
-    lv_obj_set_style_text_color(fuel_value_label1, zone_color, 0);
-    //lv_obj_set_style_text_color(fuel_tank_label, zone_color, 0);
 }
 
 static void fuel_right_anim_timer_cb(lv_timer_t * timer2)
 {
     LV_UNUSED(timer2);
-
-    Fuel_R_value += fuel_step2;
-
-    if(Fuel_R_value >= 100) {
-        Fuel_R_value = 100;
-        fuel_step2 = -1;
+    if (old_Fuel_R_value!=Fuel_R_value) {
+        old_Fuel_R_value=Fuel_R_value;
+        /* Update needle */
+        lv_scale_set_line_needle_value(scale2, needle_line2, 100, Fuel_R_value);
+        /* Update Fuel percentag */
+        lv_label_set_text_fmt(fuel_value_label2, "%d%%", Fuel_R_value);
+        /* Update text color based on zone */
+        lv_color_t zone_color = get_fuel_zone_color(Fuel_R_value);
+        lv_obj_set_style_text_color(fuel_value_label2, zone_color, 0);
+        //lv_obj_set_style_text_color(fuel_tank_label2, zone_color, 0);
     }
-    else if(Fuel_R_value <= 0) {
-        Fuel_R_value = 0;
-        fuel_step2 = 1;
-    }
-
-    /* Update needle */
-    lv_scale_set_line_needle_value(scale2, needle_line2, 100, Fuel_R_value);
-
-    /* Update Fuel percentag */
-    lv_label_set_text_fmt(fuel_value_label2, "%d%%", Fuel_R_value);
-
-    /* Update text color based on zone */
-    lv_color_t zone_color = get_fuel_zone_color(Fuel_R_value);
-    lv_obj_set_style_text_color(fuel_value_label2, zone_color, 0);
-    //lv_obj_set_style_text_color(fuel_tank_label2, zone_color, 0);
 }
 
 static void init_section_styles(section_styles_t * styles, lv_color_t color)
@@ -126,8 +104,8 @@ static void add_section(lv_obj_t * target_scale,
     lv_scale_set_section_style_main(target_scale, sec, &styles->main);
 }
 
-void fuel_gaugeL(int gaugeL_timer_value)
-{
+void fuel_gaugeL(int gaugeL_timer_value) {
+    // Expect vales in the range of 0-100 in Fuel_L_value
     // Set-create gauge design
     scale1 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale1,LV_ALIGN_TOP_LEFT,30,30);
@@ -219,8 +197,9 @@ void fuel_gaugeL(int gaugeL_timer_value)
     lv_timer_create(fuel_left_anim_timer_cb, gaugeL_timer_value, NULL);
 }
 
-void fuel_gaugeR(int gaugeR_timer_value)
-{
+void fuel_gaugeR(int gaugeR_timer_value) {
+    // Expect vales in the range of 0-100 in Fuel_R_value
+    // Set-create gauge design
     scale2 = lv_scale_create(lv_screen_active());
     lv_obj_align(scale2,LV_ALIGN_TOP_RIGHT,-40,30);
     lv_obj_set_size(scale2, 150, 150);
