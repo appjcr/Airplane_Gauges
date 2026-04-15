@@ -512,7 +512,7 @@ void setup() {
 
 void loop() {
     if(startup==true) {
-        delay(100);
+        delay(200);
         if (lv_tick_get() - last_run >= interval) {
             last_run += interval; // Update time for next check
             Serial.println(startup_int);
