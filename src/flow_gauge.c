@@ -1,12 +1,12 @@
 #include "lvgl.h"
 #include "flow_gauge.h"
 
-float flow_value = 12.52f;
-float remain_value = 10.01f;
-float flow_used_value = 12.02f;
-int32_t time_to_empty_seconds_value = 8400;
-int32_t time_to_empty_minutes_value = 20;
-int32_t time_to_empty_hours_value = 2;
+float flow_value = 0.00f;
+float remain_value = 0.00f;
+float flow_used_value = 0.00f;
+int32_t time_to_empty_seconds_value = 0;
+int32_t time_to_empty_minutes_value = 0;
+int32_t time_to_empty_hours_value = 0;
 
 static lv_obj_t * flow_value_label = NULL;
 static lv_obj_t * remain_value_label = NULL;
@@ -19,32 +19,13 @@ static lv_obj_t * time_to_empty_label = NULL;
 static lv_obj_t * gph_label = NULL;
 static lv_obj_t * g_label = NULL;
 
-// Define ranges and structures
-#define MIN_VAL 0
-#define MAX_VAL 100
-static int32_t counter = 0;
-static bool increasing = true;
-
-static void flow_anim_timer_cb(lv_timer_t * timer1)
+static void flow_anim_timer_cb(lv_timer_t * timer_flow)
 {
-    LV_UNUSED(timer1);
-
-    if (increasing) {
-        counter++;
-        if (counter >= MAX_VAL) {
-            counter = MAX_VAL;
-            increasing = false; // Switch to descending
-        }
-    } else {
-        counter--;
-        if (counter <= MIN_VAL) {
-            counter = MIN_VAL;
-            increasing = true; // Switch to ascending
-        }
-    }
-
-    flow_value = counter;
-
+    LV_UNUSED(timer_flow);
+    lv_label_set_text_fmt(flow_value_label, "%.2f", flow_value);
+    lv_label_set_text_fmt(remain_value_label, "%.2f", remain_value);
+    lv_label_set_text_fmt(flow_used_value_label, "%.2f", flow_used_value);
+    lv_label_set_text_fmt(time_to_empty_value_label, "%02d:%02d", (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
 }
 
 

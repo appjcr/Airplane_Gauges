@@ -22,21 +22,29 @@ Adafruit_ADS7830 ad7830;
 #include <flow_gauge.h>
 
 bool first_time = true;
+bool startup = true;
+bool reverse_flag = false;
+int16_t startup_int = 0;
+static uint32_t last_run = 0; 
+const uint32_t interval = 200; // in ms
 
 // Define I2C pins
-#define I2C_SDA 18
-#define I2C_SCL 17
+#define I2C_SDA 17
+#define I2C_SCL 18
 
 // Pin 5 as RX Left tank, Pin 6 as RX Right tank, Pin -1 as TX (not used)
 SoftwareSerial mySerial_L(5, -1); 
 SoftwareSerial mySerial_R(6, -1); 
 
 const int sensorPin = 7; // Pin with Interrupt for flow meter
-volatile long pulseCount = 0;
-float flowRate = 0.0;
-unsigned int flowMilliLitres = 0;
-unsigned long totalMilliLitres = 0;
-unsigned long oldTime = 0;
+// Constants for GFS402T
+const float PULSES_PER_LITER = 4380.0;
+const float LITERS_PER_GALLON = 3.78541;
+const float K_FACTOR_GALLONS = PULSES_PER_LITER * LITERS_PER_GALLON; // ~16580 pulses/gal
+volatile uint32_t pulse_count = 0;
+uint32_t last_pulse_count = 0;
+float total_gallons = 0.0;
+float current_gph = 0.0;
 
 int32_t L_counter = 0;
 int32_t bytesRead_L = 0;
@@ -50,12 +58,12 @@ int16_t Empty_fuel_L_capacitance_value = 1340;
 int16_t Full_fuel_L_capacitance_value = 905;
 int16_t Empty_fuel_R_capacitance_value = 1340;
 int16_t Full_fuel_R_capacitance_value = 905;
-int16_t Empty_flaps_resistance_value = 67;
-int16_t Full_flaps_resistance_value = 13;
-int16_t Empty_elev_resistance_value = 67;
-int16_t Full_elev_resistance_value = 13;
-int16_t Empty_ailer_resistance_value = 67;
-int16_t Full_ailer_resistance_value = 13;
+int16_t No_flaps_resistance_value = 0;
+int16_t Full_flaps_resistance_value = 255;
+int16_t Down_elev_resistance_value = 0;
+int16_t Up_elev_resistance_value = 255;
+int16_t Down_ailer_resistance_value = 0;
+int16_t Up_ailer_resistance_value = 255;
 
 const int numReadings_L = 50; // Number of samples for average
 int readings_L[numReadings_L];  // Array to store readings
@@ -351,56 +359,56 @@ static void trim_flap_sensors_timer_cb(lv_timer_t * timer2)
     // read sensors
     Flaps_position_value = ad7830.readADCsingle(0);
     if(Flaps_position_value < Full_flaps_resistance_value) Flaps_position_value = Full_flaps_resistance_value;
-    if(Flaps_position_value > Empty_flaps_resistance_value) Flaps_position_value = Empty_flaps_resistance_value;
-    Flaps_position_value = (int32_t)round((Fuel_R_value-13)*1.851);  // normalize the range 0-20
-    Flaps_position_value = 20 - Flaps_position_value;  // Reverse the range
+    if(Flaps_position_value > No_flaps_resistance_value) Flaps_position_value = No_flaps_resistance_value;
+    Flaps_position_value = (int32_t)round((Flaps_position_value)*0.784);  // normalize the range 0-20
     Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
     ailer_trim_value = ad7830.readADCsingle(1);
-    if(ailer_trim_value < Full_flaps_resistance_value) ailer_trim_value = Full_flaps_resistance_value;
-    if(ailer_trim_value > Empty_flaps_resistance_value) ailer_trim_value = Empty_flaps_resistance_value;
-    ailer_trim_value = (int32_t)round((ailer_trim_value-13)*1.851);  // normalize the range 0-20
-    ailer_trim_value = 20 - ailer_trim_value;  // Reverse the range
+    if(ailer_trim_value > Up_ailer_resistance_value) ailer_trim_value = Up_ailer_resistance_value;
+    if(ailer_trim_value < Down_ailer_resistance_value) ailer_trim_value = Down_ailer_resistance_value;
+    ailer_trim_value = (int32_t)round((ailer_trim_value)*0.392);  // normalize the range 0-100
     Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
     elev_trim_value = ad7830.readADCsingle(2);
-    if(elev_trim_value < Full_flaps_resistance_value) elev_trim_value = Full_flaps_resistance_value;
-    if(elev_trim_value > Empty_flaps_resistance_value) elev_trim_value = Empty_flaps_resistance_value;
-    elev_trim_value = (int32_t)round((elev_trim_value-13)*1.851);  // normalize the range 0-20
-    elev_trim_value = 20 - elev_trim_value;  // Reverse the range
+    if(elev_trim_value > Up_elev_resistance_value) elev_trim_value = Up_elev_resistance_value;
+    if(elev_trim_value < Down_elev_resistance_value) elev_trim_value = Down_elev_resistance_value;
+    elev_trim_value = (int32_t)round((elev_trim_value)*0.392);  // normalize the range 0-100
     Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 
 }
 
-
-void pulseCounter() {
-  pulseCount++;
+// ISR to count pulses
+void IRAM_ATTR pulse_isr() {
+    pulse_count++;
 }
 
-static void flow_sensor_timer_cb(lv_timer_t * timer3) {
+void flow_sensor_timer_cb(lv_timer_t * timer3) {
 
     LV_UNUSED(timer3);
 
-    detachInterrupt(digitalPinToInterrupt(sensorPin));
-    // Formula: Freq / 7.5 = L/min
-    flowRate = ((1000.0 / (millis() - oldTime)) * pulseCount) / 7.5;
-    oldTime = millis();
-    
-    flowMilliLitres = (flowRate / 60) * 1000;
-    totalMilliLitres += flowMilliLitres;
-    
-    Serial.print("Flow Rate: ");
-    Serial.print(flowRate);
-    Serial.print(" L/min");
-    Serial.print("\tTotal: ");
-    Serial.print(totalMilliLitres);
-    Serial.println(" mL");
+    // 1. Calculate pulses since last check
+    uint32_t current_pulses = pulse_count;
+    uint32_t pulses_in_interval = current_pulses - last_pulse_count;
+    last_pulse_count = current_pulses;
 
-    flow_value= flowRate;
-    
-    pulseCount = 0;
-    attachInterrupt(digitalPinToInterrupt(sensorPin), pulseCounter, FALLING);
+    // 2. Calculate Flow Rate (GPH)
+    // Formula: (pulses_per_sec / pulses_per_gal) * 3600
+    current_gph = ( (float)pulses_in_interval / K_FACTOR_GALLONS ) * 3600.0;
+
+    // 3. Update Total Gallons
+    total_gallons += (float)current_pulses / K_FACTOR_GALLONS;
+
+    flow_value= current_gph;
+
+    Serial.print("Flow Rate: ");
+    Serial.print(current_gph);
+    Serial.print(" GPH, Pulses in Interval: ");
+    Serial.print(pulses_in_interval);
+    Serial.print("\tTotal: ");
+    Serial.print(total_gallons);
+    Serial.println(" Gallons");
 }
+
 
 void setup() {
     delay(5000);
@@ -482,38 +490,55 @@ void setup() {
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
 
     pinMode(sensorPin, INPUT);
-    // Trigger pulseCounter function on falling edge
-    attachInterrupt(digitalPinToInterrupt(sensorPin), pulseCounter, FALLING);
+    // Trigger pulseCounter function on rising edge
+    attachInterrupt(digitalPinToInterrupt(sensorPin), pulse_isr, FALLING);
 
     // Initialize all Fuel readings to 0
     for (int i = 0; i < numReadings_L; i++) readings_L[i] = 0;
     for (int i = 0; i < numReadings_R; i++) readings_R[i] = 0;
 
-    // Update display Fuel left gauge every 500ms
-    fuel_gaugeL(500);
-    // Update display Fuel right gauge every 500ms
-    fuel_gaugeR(500);
+    // Update display Fuel left gauge every 200ms
+    fuel_gaugeL(200);
+    // Update display Fuel right gauge every 200ms
+    fuel_gaugeR(200);
     // Update display Flaps gauge every 250ms
     flaps_gauge(250);
-    // Update display Trim every 500ms
-    trim_gauge(500);
-    // Update display Flow gauge every 1000ms
-    flow_gauge(1000);
-
+    // Update display Trim every 250ms
+    trim_gauge(250);
+    // Update display Flow gauge every 250ms
+    flow_gauge(250);
 
 }
 
 void loop() {
-    if (first_time==true) {
+    if(startup==true) {
+        delay(100);
+        if (lv_tick_get() - last_run >= interval) {
+            last_run += interval; // Update time for next check
+            Serial.println(startup_int);
+            Fuel_L_value = startup_int*5; // 0 to 100
+            Fuel_R_value = startup_int*5; // 0 to 100
+            Flaps_position_value = startup_int; // 0 to 20
+            ailer_trim_value = startup_int*5; // 0 to 100
+            elev_trim_value = startup_int*5; // 0 to 100
+            if(reverse_flag==false && startup_int <= 20) {
+                startup_int++;
+            } else {
+                reverse_flag = true;
+                startup_int--;
+            }
+            if (startup_int < 0) {
+                startup = false;
+            }
+        }
+    }   
+    if (first_time==true && startup==false) {
         first_time=false;
-        // Create timer to run the sensors for fuel, flap, trim
         lv_timer_create(fuel_sensors_timer_cb, 100, NULL);
-        // Create timer to run the sensors for fuel, flap, trim
         lv_timer_create(trim_flap_sensors_timer_cb, 100, NULL);
-        // Create the timer to run the flow sensor
         lv_timer_create(flow_sensor_timer_cb, 1000, NULL);
-
     }
+
 
     //if(flow_hold_value!=flow_value) {
     //    flow_hold_value=flow_value;

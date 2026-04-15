@@ -31,7 +31,7 @@ static void trim_anim_timer_cb(lv_timer_t * timer1)
 
 void trim_gauge(int gauge_timer_value)
 {
-    //Expecting value range from 0-20 in elev_trim_value and ailer_trim_value
+    //Expecting value range from 0-100 in elev_trim_value and ailer_trim_value
     // Set-create gauge design
     // Create the container
     lv_obj_t * cont = lv_obj_create(lv_screen_active());
