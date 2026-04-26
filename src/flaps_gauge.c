@@ -23,32 +23,16 @@ static void flaps_anim_timer_cb(lv_timer_t * timer1)
 
     if (old_Flaps_position_value!=Flaps_position_value) {
         old_Flaps_position_value=Flaps_position_value;
-        //  Show "UP" when position is 0
-        if (Flaps_position_value==0) lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
+        if (Flaps_position_value == 0) lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-        // Show lines as flaps are lowered
-        if (Flaps_position_value>0) lv_obj_remove_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[0], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=2) lv_obj_remove_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[1], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=4) lv_obj_remove_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[2], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=6) lv_obj_remove_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[3], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=8) lv_obj_remove_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[4], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=10) lv_obj_remove_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[5], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=12) lv_obj_remove_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[6], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=14) lv_obj_remove_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[7], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=16) lv_obj_remove_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[8], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=18) lv_obj_remove_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[9], LV_OBJ_FLAG_HIDDEN);
-        if (Flaps_position_value>=20) lv_obj_remove_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(line_group.lines[10], LV_OBJ_FLAG_HIDDEN);
+
+        for (int i = 0; i < 11; i++) {
+            int32_t threshold = (i == 0) ? 1 : i * 2;
+            if (Flaps_position_value >= threshold)
+                lv_obj_remove_flag(line_group.lines[i], LV_OBJ_FLAG_HIDDEN);
+            else
+                lv_obj_add_flag(line_group.lines[i], LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -79,34 +63,18 @@ void flaps_gauge(int gauge_timer_value) {
     lv_obj_set_style_length(scale, 0, LV_PART_ITEMS); // Minor tick length
     lv_obj_align(scale, LV_ALIGN_BOTTOM_RIGHT, -5, 0);
 
-    // Style for all lines (35px width, 10px height, no border)
     static lv_style_t style_line;
     lv_style_init(&style_line);
     lv_style_set_width(&style_line, 35);
     lv_style_set_height(&style_line, 10);
     lv_style_set_border_width(&style_line, 0);
 
-    // Create lines for flap positions
-    // Style for all lines (35px width, 10px height, no border)
     for (int i = 0; i < 11; i++) {
-        // Create the line as a rectangle object
         line_group.lines[i] = lv_obj_create(cont);
         lv_obj_add_style(line_group.lines[i], &style_line, 0);
-        
-        // Position one under another 
-        lv_obj_set_pos(line_group.lines[i], 20, -5 + (i * 11)); 
-
-        // Set colors based on position
-        if (i == 0) {
-            // First line: Yellow
-            lv_obj_set_style_bg_color(line_group.lines[i], lv_palette_main(LV_PALETTE_YELLOW), 0);
-        } else if (i == 1 || i == 2) {
-            // Next two: Yellow
-            lv_obj_set_style_bg_color(line_group.lines[i], lv_palette_main(LV_PALETTE_YELLOW), 0);
-        } else {
-            // Remainder: Orange
-            lv_obj_set_style_bg_color(line_group.lines[i], lv_palette_main(LV_PALETTE_ORANGE), 0);
-        }
+        lv_obj_set_pos(line_group.lines[i], 20, -5 + (i * 11));
+        lv_palette_t color = (i < 3) ? LV_PALETTE_YELLOW : LV_PALETTE_ORANGE;
+        lv_obj_set_style_bg_color(line_group.lines[i], lv_palette_main(color), 0);
     }
 
     flaps_label = lv_label_create(cont);

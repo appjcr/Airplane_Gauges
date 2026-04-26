@@ -20,9 +20,10 @@ extern "C" {
  **********************/
 extern lv_obj_t * screen_gauges;
 extern float flow_value;
-extern float remail_value;
+extern float remain_value;
 extern float flow_used_value;
-extern int32_t time_to_empty_value;
+extern int32_t time_to_empty_hours_value;
+extern int32_t time_to_empty_minutes_value;
 
 /**********************
  * GLOBAL PROTOTYPES
