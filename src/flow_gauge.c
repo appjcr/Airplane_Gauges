@@ -4,7 +4,6 @@
 float flow_value = 0.00f;
 float remain_value = 0.00f;
 float flow_used_value = 0.00f;
-int32_t time_to_empty_seconds_value = 0;
 int32_t time_to_empty_minutes_value = 0;
 int32_t time_to_empty_hours_value = 0;
 
@@ -14,7 +13,7 @@ static lv_obj_t * flow_used_value_label = NULL;
 static lv_obj_t * time_to_empty_value_label = NULL;
 static lv_obj_t * flow_label = NULL;
 static lv_obj_t * remain_label = NULL;
-static lv_obj_t * flow__used_label = NULL;
+static lv_obj_t * flow_used_label = NULL;
 static lv_obj_t * time_to_empty_label = NULL;
 static lv_obj_t * gph_label = NULL;
 static lv_obj_t * g_label = NULL;
@@ -76,11 +75,11 @@ void flow_gauge(int gauge_timer_value)
     lv_obj_set_style_text_color(g_label, lv_color_white(), 0);
     lv_obj_align(g_label, LV_ALIGN_TOP_LEFT, 100, 44);
 
-    flow__used_label = lv_label_create(cont);
-    lv_label_set_text(flow__used_label, "Used: ");
-    lv_obj_set_style_text_font(flow__used_label, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(flow__used_label, lv_color_white(), 0);
-    lv_obj_align(flow__used_label, LV_ALIGN_TOP_LEFT, -15, 84);
+    flow_used_label = lv_label_create(cont);
+    lv_label_set_text(flow_used_label, "Used: ");
+    lv_obj_set_style_text_font(flow_used_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(flow_used_label, lv_color_white(), 0);
+    lv_obj_align(flow_used_label, LV_ALIGN_TOP_LEFT, -15, 84);
 
     flow_used_value_label = lv_label_create(cont);
     lv_label_set_text_fmt(flow_used_value_label, "%.2f", flow_used_value);

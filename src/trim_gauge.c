@@ -6,8 +6,6 @@ int32_t ailer_trim_value = 0;
 int32_t old_elev_trim_value = -1;
 int32_t old_ailer_trim_value = -1;
 
-static lv_obj_t * elev_value_label = NULL;
-static lv_obj_t * ailer_value_label = NULL;
 static lv_obj_t * elev_label = NULL;
 static lv_obj_t * ailer_label = NULL;
 static lv_obj_t * elev_line = NULL;
@@ -60,16 +58,14 @@ void trim_gauge(int gauge_timer_value)
     lv_obj_set_size(elev_line, 40, 5);
     lv_obj_set_style_bg_color(elev_line, lv_palette_main(LV_PALETTE_BLUE), 0);
     lv_obj_set_style_border_width(elev_line, 0, 0); // Remove border
-    lv_obj_set_pos(elev_line, 55, 140); 
-    //lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_pos(elev_line, 55, 140);
 
     // Create aileron indicator
     ailer_line = lv_obj_create(cont);
     lv_obj_set_size(ailer_line, 5, 40);
     lv_obj_set_style_bg_color(ailer_line, lv_palette_main(LV_PALETTE_YELLOW), 0);
-    lv_obj_set_style_border_width(ailer_line, 0, 0); // Remove border
-    lv_obj_set_pos(ailer_line, 140, 55); 
-    //lv_obj_align(h_line, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_border_width(ailer_line, 0, 0);
+    lv_obj_set_pos(ailer_line, 140, 55);
 
     elev_label = lv_label_create(cont);
     lv_label_set_text(elev_label, "Elev");

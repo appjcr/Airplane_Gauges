@@ -3,23 +3,18 @@
 
 int32_t Fuel_L_value = 0;
 int32_t Fuel_R_value = 0;
-int32_t old_Fuel_L_value = -1;
-int32_t old_Fuel_R_value = -1;
+static int32_t old_Fuel_L_value = -1;
+static int32_t old_Fuel_R_value = -1;
 
-static const char * custom_labels1[] = {"E", "1/4", "1/2", "3/4", "F", NULL};
-static const char * custom_labels2[] = {"E", "1/4", "1/2", "3/4", "F", NULL};
+static const char * custom_labels[] = {"E", "1/4", "1/2", "3/4", "F", NULL};
 
-// FUEL LEFT
 static lv_obj_t * scale1 = NULL;
 static lv_obj_t * needle_line1 = NULL;
 static lv_obj_t * fuel_value_label1 = NULL;
-static lv_obj_t * fuel_tank_label1 = NULL;
 
-// FUEL RIGHT
 static lv_obj_t * scale2 = NULL;
 static lv_obj_t * needle_line2 = NULL;
 static lv_obj_t * fuel_value_label2 = NULL;
-static lv_obj_t * fuel_tank_label2 = NULL;
 
 typedef struct {
     lv_style_t items;
@@ -33,45 +28,32 @@ static section_styles_t zone3_styles;
 static section_styles_t zone4_styles;
 static section_styles_t zone5_styles;
 
-
 static lv_color_t get_fuel_zone_color(int32_t hr)
 {
-    if(hr < 15) return lv_palette_main(LV_PALETTE_RED); /* Zone 1 */
-    else if(hr < 25) return lv_palette_main(LV_PALETTE_YELLOW); /* Zone 2 */
-    else if(hr < 50) return lv_palette_main(LV_PALETTE_GREEN); /* Zone 3 */
-    else if(hr < 75) return lv_palette_main(LV_PALETTE_GREEN); /* Zone 4 */
-    else return lv_palette_main(LV_PALETTE_GREEN); /* Zone 5 */
+    if (hr < 15) return lv_palette_main(LV_PALETTE_RED);
+    if (hr < 25) return lv_palette_main(LV_PALETTE_YELLOW);
+    return lv_palette_main(LV_PALETTE_GREEN);
 }
 
 static void fuel_left_anim_timer_cb(lv_timer_t * timer1)
 {
     LV_UNUSED(timer1);
-    if (old_Fuel_L_value!=Fuel_L_value) {
-        old_Fuel_L_value=Fuel_L_value;
-        /* Update needle */
+    if (old_Fuel_L_value != Fuel_L_value) {
+        old_Fuel_L_value = Fuel_L_value;
         lv_scale_set_line_needle_value(scale1, needle_line1, 100, Fuel_L_value);
-        /* Update Fuel percentage text */
         lv_label_set_text_fmt(fuel_value_label1, "%d%%", Fuel_L_value);
-        /* Update text color based on zone */
-        lv_color_t zone_color = get_fuel_zone_color(Fuel_L_value);
-        lv_obj_set_style_text_color(fuel_value_label1, zone_color, 0);
-        //lv_obj_set_style_text_color(fuel_tank_label, zone_color, 0);
+        lv_obj_set_style_text_color(fuel_value_label1, get_fuel_zone_color(Fuel_L_value), 0);
     }
 }
 
 static void fuel_right_anim_timer_cb(lv_timer_t * timer2)
 {
     LV_UNUSED(timer2);
-    if (old_Fuel_R_value!=Fuel_R_value) {
-        old_Fuel_R_value=Fuel_R_value;
-        /* Update needle */
+    if (old_Fuel_R_value != Fuel_R_value) {
+        old_Fuel_R_value = Fuel_R_value;
         lv_scale_set_line_needle_value(scale2, needle_line2, 100, Fuel_R_value);
-        /* Update Fuel percentag */
         lv_label_set_text_fmt(fuel_value_label2, "%d%%", Fuel_R_value);
-        /* Update text color based on zone */
-        lv_color_t zone_color = get_fuel_zone_color(Fuel_R_value);
-        lv_obj_set_style_text_color(fuel_value_label2, zone_color, 0);
-        //lv_obj_set_style_text_color(fuel_tank_label2, zone_color, 0);
+        lv_obj_set_style_text_color(fuel_value_label2, get_fuel_zone_color(Fuel_R_value), 0);
     }
 }
 
@@ -92,9 +74,7 @@ static void init_section_styles(section_styles_t * styles, lv_color_t color)
     lv_style_set_arc_width(&styles->main, 20);
 }
 
-static void add_section(lv_obj_t * target_scale,
-                        int32_t from,
-                        int32_t to,
+static void add_section(lv_obj_t * target_scale, int32_t from, int32_t to,
                         const section_styles_t * styles)
 {
     lv_scale_section_t * sec = lv_scale_add_section(target_scale);
@@ -104,189 +84,151 @@ static void add_section(lv_obj_t * target_scale,
     lv_scale_set_section_style_main(target_scale, sec, &styles->main);
 }
 
-void fuel_gaugeL(int gaugeL_timer_value) {
-    // Expect vales in the range of 0-100 in Fuel_L_value
-    // Set-create gauge design
-    scale1 = lv_scale_create(screen_gauges);
-    lv_obj_align(scale1,LV_ALIGN_TOP_LEFT,30,30);
-    lv_obj_set_size(scale1, 150, 150);
-    lv_scale_set_mode(scale1, LV_SCALE_MODE_ROUND_OUTER);
-    lv_scale_set_range(scale1, 0, 100);
-    lv_scale_set_total_tick_count(scale1, 17);
-    lv_scale_set_major_tick_every(scale1, 4);
-    lv_scale_set_text_src(scale1, custom_labels1);
-    lv_scale_set_angle_range(scale1, 180);
-    lv_scale_set_rotation(scale1, 180);
-    lv_scale_set_label_show(scale1, true);
-
-    lv_obj_set_style_length(scale1, 0, LV_PART_ITEMS);
-    lv_obj_set_style_line_color(scale1, lv_color_white(), LV_PART_ITEMS); // Major ticks
-    lv_obj_set_style_length(scale1, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_line_color(scale1, lv_color_white(), LV_PART_INDICATOR); // Minor ticks
-    lv_obj_set_style_arc_width(scale1, 18, LV_PART_MAIN);
-
-    /* Zone 1: (RED) */
+/* Initialize zone styles exactly once — re-initializing after attaching to a scale corrupts it */
+static void ensure_zone_styles(void)
+{
+    static bool ready = false;
+    if (ready) return;
     init_section_styles(&zone1_styles, lv_palette_main(LV_PALETTE_RED));
-    add_section(scale1, 0, 15, &zone1_styles);
-
-    /* Zone 2: (YELLOW) */
     init_section_styles(&zone2_styles, lv_palette_main(LV_PALETTE_YELLOW));
-    add_section(scale1, 16, 25, &zone2_styles);
-
-    /* Zone 3: (Green) */
     init_section_styles(&zone3_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale1, 26, 50, &zone3_styles);
-
-    /* Zone 4: (GREEN) */
     init_section_styles(&zone4_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale1, 51, 75, &zone4_styles);
-
-    /* Zone 5: (GREEN) */
     init_section_styles(&zone5_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale1, 76, 100, &zone5_styles);
-
-    needle_line1 = lv_line_create(scale1);
-
-    /* Optional styling */
-    lv_obj_set_style_line_color(needle_line1, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_line_width(needle_line1, 8, LV_PART_MAIN);
-    lv_obj_set_style_length(needle_line1, 40, LV_PART_MAIN);
-    lv_obj_set_style_line_rounded(needle_line1, false, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(needle_line1, 50, LV_PART_MAIN);
-
-    int32_t current_hr1 = 50;
-
-    lv_scale_set_line_needle_value(scale1, needle_line1, 50, current_hr1);
-
-    lv_obj_t * circle1 = lv_obj_create(screen_gauges);
-    lv_obj_set_size(circle1, 108, 108);
-    lv_obj_align(circle1,LV_ALIGN_TOP_LEFT,51,50);
-
-
-    lv_obj_set_style_radius(circle1, LV_RADIUS_CIRCLE, 0);
-
-    lv_obj_set_style_bg_color(circle1, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
-    lv_obj_set_style_bg_opa(circle1, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(circle1, 0, LV_PART_MAIN);
-
-    lv_obj_t * fuel_container1 = lv_obj_create(circle1);
-    lv_obj_center(fuel_container1);
-    lv_obj_set_size(fuel_container1, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(fuel_container1, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(fuel_container1, 0, 0);
-    lv_obj_set_layout(fuel_container1, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(fuel_container1, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(fuel_container1, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(fuel_container1, 0, 0);
-    lv_obj_set_flex_align(fuel_container1, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    fuel_value_label1 = lv_label_create(fuel_container1);
-    lv_label_set_text_fmt(fuel_value_label1, "%d%%", current_hr1);
-    lv_obj_set_style_text_font(fuel_value_label1, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_align(fuel_value_label1, LV_TEXT_ALIGN_CENTER, 0);
-
-    fuel_tank_label1 = lv_label_create(fuel_container1);
-    lv_label_set_text(fuel_tank_label1, "Left");
-    lv_obj_set_style_text_font(fuel_tank_label1, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(fuel_tank_label1, lv_color_white(), 0);
-    lv_obj_set_style_text_align(fuel_tank_label1, LV_TEXT_ALIGN_CENTER, 0);
-
-    lv_color_t zone_color = get_fuel_zone_color(current_hr1);
-    lv_obj_set_style_text_color(fuel_value_label1, zone_color, 0);
-
-    lv_timer_create(fuel_left_anim_timer_cb, gaugeL_timer_value, NULL);
+    ready = true;
 }
 
-void fuel_gaugeR(int gaugeR_timer_value) {
-    // Expect vales in the range of 0-100 in Fuel_R_value
-    // Set-create gauge design
-    scale2 = lv_scale_create(screen_gauges);
-    lv_obj_align(scale2,LV_ALIGN_TOP_RIGHT,-40,30);
-    lv_obj_set_size(scale2, 150, 150);
-    lv_scale_set_mode(scale2, LV_SCALE_MODE_ROUND_OUTER);
-    lv_scale_set_range(scale2, 0, 100);
-    lv_scale_set_total_tick_count(scale2, 17);
-    lv_scale_set_major_tick_every(scale2, 4);
-    lv_scale_set_text_src(scale2, custom_labels2);
-    lv_scale_set_angle_range(scale2, 180);
-    lv_scale_set_rotation(scale2, 180);
-    lv_scale_set_label_show(scale2, true);
+typedef struct {
+    lv_obj_t **scale_out;
+    lv_obj_t **needle_out;
+    lv_obj_t **value_label_out;
+    lv_align_t scale_align;
+    lv_coord_t scale_x;
+    lv_coord_t scale_y;
+    lv_align_t circle_align;
+    lv_coord_t circle_x;
+    lv_coord_t circle_y;
+    bool needle_rounded;
+    lv_coord_t needle_pad_right;
+    const char *tank_name;
+    int32_t initial_value;
+    lv_timer_cb_t timer_cb;
+    int timer_period;
+} fuel_gauge_cfg_t;
 
-    lv_obj_set_style_length(scale2, 0, LV_PART_ITEMS);
-    lv_obj_set_style_line_color(scale2, lv_color_white(), LV_PART_ITEMS); // Major ticks
-    lv_obj_set_style_length(scale2, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_line_color(scale2, lv_color_white(), LV_PART_INDICATOR); // Minor ticks
-    lv_obj_set_style_arc_width(scale2, 18, LV_PART_MAIN);
+static void create_fuel_gauge(const fuel_gauge_cfg_t *cfg)
+{
+    ensure_zone_styles();
 
-    /* Zone 1: (RED) */
-    init_section_styles(&zone1_styles, lv_palette_main(LV_PALETTE_RED));
-    add_section(scale2, 0, 15, &zone1_styles);
+    lv_obj_t *scale = lv_scale_create(screen_gauges);
+    lv_obj_align(scale, cfg->scale_align, cfg->scale_x, cfg->scale_y);
+    lv_obj_set_size(scale, 150, 150);
+    lv_scale_set_mode(scale, LV_SCALE_MODE_ROUND_OUTER);
+    lv_scale_set_range(scale, 0, 100);
+    lv_scale_set_total_tick_count(scale, 17);
+    lv_scale_set_major_tick_every(scale, 4);
+    lv_scale_set_text_src(scale, custom_labels);
+    lv_scale_set_angle_range(scale, 180);
+    lv_scale_set_rotation(scale, 180);
+    lv_scale_set_label_show(scale, true);
 
-    /* Zone 2: (YELLOW) */
-    init_section_styles(&zone2_styles, lv_palette_main(LV_PALETTE_YELLOW));
-    add_section(scale2, 16, 25, &zone2_styles);
+    lv_obj_set_style_length(scale, 0, LV_PART_ITEMS);
+    lv_obj_set_style_line_color(scale, lv_color_white(), LV_PART_ITEMS);
+    lv_obj_set_style_length(scale, 0, LV_PART_INDICATOR);
+    lv_obj_set_style_line_color(scale, lv_color_white(), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(scale, 18, LV_PART_MAIN);
 
-    /* Zone 3: (Green) */
-    init_section_styles(&zone3_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale2, 26, 50, &zone3_styles);
+    add_section(scale,  0,  15, &zone1_styles);
+    add_section(scale, 16,  25, &zone2_styles);
+    add_section(scale, 26,  50, &zone3_styles);
+    add_section(scale, 51,  75, &zone4_styles);
+    add_section(scale, 76, 100, &zone5_styles);
 
-    /* Zone 4: (GREEN) */
-    init_section_styles(&zone4_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale2, 51, 75, &zone4_styles);
+    lv_obj_t *needle = lv_line_create(scale);
+    lv_obj_set_style_line_color(needle, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_line_width(needle, 8, LV_PART_MAIN);
+    lv_obj_set_style_length(needle, 40, LV_PART_MAIN);
+    lv_obj_set_style_line_rounded(needle, cfg->needle_rounded, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(needle, cfg->needle_pad_right, LV_PART_MAIN);
+    lv_scale_set_line_needle_value(scale, needle, 50, cfg->initial_value);
 
-    /* Zone 5: (GREEN) */
-    init_section_styles(&zone5_styles, lv_palette_main(LV_PALETTE_GREEN));
-    add_section(scale2, 76, 100, &zone5_styles);
+    lv_obj_t *circle = lv_obj_create(screen_gauges);
+    lv_obj_set_size(circle, 108, 108);
+    lv_obj_align(circle, cfg->circle_align, cfg->circle_x, cfg->circle_y);
+    lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(circle, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
+    lv_obj_set_style_bg_opa(circle, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(circle, 0, LV_PART_MAIN);
 
+    lv_obj_t *container = lv_obj_create(circle);
+    lv_obj_center(container);
+    lv_obj_set_size(container, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container, 0, 0);
+    lv_obj_set_layout(container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(container, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(container, 0, 0);
+    lv_obj_set_flex_align(container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    needle_line2 = lv_line_create(scale2);
+    lv_obj_t *value_label = lv_label_create(container);
+    lv_label_set_text_fmt(value_label, "%d%%", cfg->initial_value);
+    lv_obj_set_style_text_font(value_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(value_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(value_label, get_fuel_zone_color(cfg->initial_value), 0);
 
-    /* Optional styling */
-    lv_obj_set_style_line_color(needle_line2, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_line_width(needle_line2, 8, LV_PART_MAIN);
-    lv_obj_set_style_length(needle_line2, 40, LV_PART_MAIN);
-    lv_obj_set_style_line_rounded(needle_line2, true, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(needle_line2, 5, LV_PART_MAIN);
+    lv_obj_t *tank_label = lv_label_create(container);
+    lv_label_set_text(tank_label, cfg->tank_name);
+    lv_obj_set_style_text_font(tank_label, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(tank_label, lv_color_white(), 0);
+    lv_obj_set_style_text_align(tank_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    int32_t current_hr2 = 75;
+    *cfg->scale_out       = scale;
+    *cfg->needle_out      = needle;
+    *cfg->value_label_out = value_label;
 
-    lv_scale_set_line_needle_value(scale2, needle_line2, 50, current_hr2);
+    lv_timer_create(cfg->timer_cb, cfg->timer_period, NULL);
+}
 
-    lv_obj_t * circle2 = lv_obj_create(screen_gauges);
-    lv_obj_set_size(circle2, 108, 108);
-    lv_obj_align(circle2,LV_ALIGN_TOP_RIGHT,-61,50);
+void fuel_gaugeL(int gaugeL_timer_value)
+{
+    fuel_gauge_cfg_t cfg = {
+        .scale_out        = &scale1,
+        .needle_out       = &needle_line1,
+        .value_label_out  = &fuel_value_label1,
+        .scale_align      = LV_ALIGN_TOP_LEFT,
+        .scale_x          = 30,
+        .scale_y          = 30,
+        .circle_align     = LV_ALIGN_TOP_LEFT,
+        .circle_x         = 51,
+        .circle_y         = 50,
+        .needle_rounded   = false,
+        .needle_pad_right = 50,
+        .tank_name        = "Left",
+        .initial_value    = 50,
+        .timer_cb         = fuel_left_anim_timer_cb,
+        .timer_period     = gaugeL_timer_value,
+    };
+    create_fuel_gauge(&cfg);
+}
 
-
-    lv_obj_set_style_radius(circle2, LV_RADIUS_CIRCLE, 0);
-
-    lv_obj_set_style_bg_color(circle2, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
-    lv_obj_set_style_bg_opa(circle2, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(circle2, 0, LV_PART_MAIN);
-
-    lv_obj_t * fuel_container2 = lv_obj_create(circle2);
-    lv_obj_center(fuel_container2);
-    lv_obj_set_size(fuel_container2, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(fuel_container2, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(fuel_container2, 0, 0);
-    lv_obj_set_layout(fuel_container2, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(fuel_container2, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(fuel_container2, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(fuel_container2, 0, 0);
-    lv_obj_set_flex_align(fuel_container2, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    fuel_value_label2 = lv_label_create(fuel_container2);
-    lv_label_set_text_fmt(fuel_value_label2, "%d%%", current_hr2);
-    lv_obj_set_style_text_font(fuel_value_label2, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_align(fuel_value_label2, LV_TEXT_ALIGN_CENTER, 0);
-
-    fuel_tank_label2 = lv_label_create(fuel_container2);
-    lv_label_set_text(fuel_tank_label2, "Right");
-    lv_obj_set_style_text_font(fuel_tank_label2, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_align(fuel_tank_label2, LV_TEXT_ALIGN_CENTER, 0);
-
-    lv_color_t zone_color = get_fuel_zone_color(current_hr2);
-    lv_obj_set_style_text_color(fuel_value_label2, zone_color, 0);
-    lv_obj_set_style_text_color(fuel_tank_label2, lv_color_white(), 0);
-
-    lv_timer_create(fuel_right_anim_timer_cb, gaugeR_timer_value, NULL);
+void fuel_gaugeR(int gaugeR_timer_value)
+{
+    fuel_gauge_cfg_t cfg = {
+        .scale_out        = &scale2,
+        .needle_out       = &needle_line2,
+        .value_label_out  = &fuel_value_label2,
+        .scale_align      = LV_ALIGN_TOP_RIGHT,
+        .scale_x          = -40,
+        .scale_y          = 30,
+        .circle_align     = LV_ALIGN_TOP_RIGHT,
+        .circle_x         = -61,
+        .circle_y         = 50,
+        .needle_rounded   = true,
+        .needle_pad_right = 5,
+        .tank_name        = "Right",
+        .initial_value    = 75,
+        .timer_cb         = fuel_right_anim_timer_cb,
+        .timer_period     = gaugeR_timer_value,
+    };
+    create_fuel_gauge(&cfg);
 }
