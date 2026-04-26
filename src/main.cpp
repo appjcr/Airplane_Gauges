@@ -5,6 +5,7 @@
 Adafruit_ADS7830 ad7830;
 
 #include <lvgl.h>
+#include "config.h"
 #include "pincfg.h"
 #include "dispcfg.h"
 #include "AXS15231B_touch.h"
@@ -22,7 +23,6 @@ lv_obj_t * screen_gauges;
 Preferences prefs;
 lv_obj_t *roller_left, *roller_right;
 const char* fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
-const int MAX_FUEL = 12;
 int left_val = 0;
 int right_val = 0;
 
@@ -31,18 +31,11 @@ bool startup = true;
 bool reverse_flag = false;
 int16_t startup_int = 0;
 static uint32_t last_run = 0;
-const uint32_t interval = 200;
 
-#define ADS_SDA 17
-#define ADS_SCL 18
+SoftwareSerial mySerial_L(FUEL_SENSOR_PIN_L, -1);
+SoftwareSerial mySerial_R(FUEL_SENSOR_PIN_R, -1);
 
-SoftwareSerial mySerial_L(5, -1);
-SoftwareSerial mySerial_R(6, -1);
-
-const int sensorPin = 7;
-const float PULSES_PER_LITER = 4380.0;
-const float LITERS_PER_GALLON = 3.78541;
-const float K_FACTOR_GALLONS = PULSES_PER_LITER * LITERS_PER_GALLON;
+static const float K_FACTOR_GALLONS = FLOW_PULSES_PER_L * FLOW_L_PER_GALLON;
 volatile uint32_t pulse_count = 0;
 uint32_t last_pulse_count = 0;
 float total_gallons = 0.0;
@@ -55,21 +48,9 @@ int32_t R_counter = 0;
 int32_t bytesRead_R = 0;
 uint8_t buffer_R[10];
 
-int16_t Empty_fuel_L_capacitance_value = 1590;
-int16_t Full_fuel_L_capacitance_value  = 805;
-int16_t Empty_fuel_R_capacitance_value = 1590;
-int16_t Full_fuel_R_capacitance_value  = 805;
-int16_t No_flaps_resistance_value      = 0;
-int16_t Full_flaps_resistance_value    = 255;
-int16_t Down_elev_resistance_value     = 0;
-int16_t Up_elev_resistance_value       = 255;
-int16_t Down_ailer_resistance_value    = 0;
-int16_t Up_ailer_resistance_value      = 255;
-
 // --- Rolling-average smoother ---
 struct SmoothBuffer {
-    static const int SIZE = 50;
-    int readings[SIZE];
+    int readings[SMOOTH_BUF_SIZE];
     int readIndex;
     long total;
     SmoothBuffer() : readIndex(0), total(0) { memset(readings, 0, sizeof(readings)); }
@@ -79,8 +60,8 @@ static int32_t smooth_reading(SmoothBuffer &buf, int32_t new_val) {
     buf.total -= buf.readings[buf.readIndex];
     buf.readings[buf.readIndex] = new_val;
     buf.total += new_val;
-    buf.readIndex = (buf.readIndex + 1) % SmoothBuffer::SIZE;
-    return buf.total / SmoothBuffer::SIZE;
+    buf.readIndex = (buf.readIndex + 1) % SMOOTH_BUF_SIZE;
+    return buf.total / SMOOTH_BUF_SIZE;
 }
 
 static SmoothBuffer smooth_L;
@@ -274,10 +255,10 @@ static void read_tank_sensor(SoftwareSerial &serial, uint8_t *buf,
 static void fuel_sensors_timer_cb(lv_timer_t * timer1) {
     LV_UNUSED(timer1);
     read_tank_sensor(mySerial_L, buffer_L, L_counter, bytesRead_L, Fuel_L_value, smooth_L,
-                     Full_fuel_L_capacitance_value, Empty_fuel_L_capacitance_value, 1475,
+                     FUEL_L_CAP_FULL, FUEL_L_CAP_EMPTY, FUEL_L_EMPTY_THRESH,
                      fuel_L_table, ARRAY_SIZE(fuel_L_table), "Left");
     read_tank_sensor(mySerial_R, buffer_R, R_counter, bytesRead_R, Fuel_R_value, smooth_R,
-                     Full_fuel_R_capacitance_value, Empty_fuel_R_capacitance_value, 1320,
+                     FUEL_R_CAP_FULL, FUEL_R_CAP_EMPTY, FUEL_R_EMPTY_THRESH,
                      fuel_R_table, ARRAY_SIZE(fuel_R_table), "Right");
 }
 
@@ -291,16 +272,16 @@ static int32_t read_clamp_adc(int channel, int16_t lo, int16_t hi, float scale) 
 static void trim_flap_sensors_timer_cb(lv_timer_t * timer2) {
     LV_UNUSED(timer2);
 
-    Flaps_position_value = ad7830.readADCsingle(0);
-    if (Flaps_position_value < Full_flaps_resistance_value) Flaps_position_value = Full_flaps_resistance_value;
-    if (Flaps_position_value > No_flaps_resistance_value)   Flaps_position_value = No_flaps_resistance_value;
-    Flaps_position_value = (int32_t)round(Flaps_position_value * 0.784);
+    Flaps_position_value = ad7830.readADCsingle(ADC_CH_FLAPS);
+    if (Flaps_position_value < FLAPS_ADC_HI) Flaps_position_value = FLAPS_ADC_HI;
+    if (Flaps_position_value > FLAPS_ADC_LO) Flaps_position_value = FLAPS_ADC_LO;
+    Flaps_position_value = (int32_t)round(Flaps_position_value * FLAPS_ADC_SCALE);
     Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
-    ailer_trim_value = read_clamp_adc(1, Down_ailer_resistance_value, Up_ailer_resistance_value, 0.392);
+    ailer_trim_value = read_clamp_adc(ADC_CH_AILER, TRIM_ADC_LO, TRIM_ADC_HI, TRIM_ADC_SCALE);
     Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
-    elev_trim_value = read_clamp_adc(2, Down_elev_resistance_value, Up_elev_resistance_value, 0.392);
+    elev_trim_value = read_clamp_adc(ADC_CH_ELEV, TRIM_ADC_LO, TRIM_ADC_HI, TRIM_ADC_SCALE);
     Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 }
 
@@ -333,12 +314,12 @@ void setup() {
 
     Serial.begin(115200);
     Serial.println("Start receiving TTL to serial feeds\n");
-    mySerial_L.begin(1200);
-    mySerial_R.begin(1200);
+    mySerial_L.begin(FUEL_SENSOR_BAUD);
+    mySerial_R.begin(FUEL_SENSOR_BAUD);
 
-    Wire1.begin(ADS_SDA, ADS_SCL, 100000);
+    Wire1.begin(ADS_SDA, ADS_SCL, ADS_I2C_FREQ);
     Serial.println("Adafruit ADS7830 start\n");
-    if (!ad7830.begin(0x48, &Wire1)) {
+    if (!ad7830.begin(ADS_I2C_ADDR, &Wire1)) {
         Serial.println("Failed to initialize ADS7830!\n");
         while (1);
     }
@@ -397,14 +378,14 @@ void setup() {
     lv_label_set_text(label2, "Setup");
     lv_obj_add_event_cb(btn2, switch_screen_to_setup_event_cb, LV_EVENT_CLICKED, screen_gauges);
 
-    pinMode(sensorPin, INPUT);
-    attachInterrupt(digitalPinToInterrupt(sensorPin), pulse_isr, FALLING);
+    pinMode(FLOW_SENSOR_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), pulse_isr, FALLING);
 
-    fuel_gaugeL(200);
-    fuel_gaugeR(200);
-    flaps_gauge(250);
-    trim_gauge(250);
-    flow_gauge(250);
+    fuel_gaugeL(TIMER_GAUGE_FUEL_MS);
+    fuel_gaugeR(TIMER_GAUGE_FUEL_MS);
+    flaps_gauge(TIMER_GAUGE_FLAPS_MS);
+    trim_gauge(TIMER_GAUGE_TRIM_MS);
+    flow_gauge(TIMER_GAUGE_FLOW_MS);
 
     setup_fuel_gui();
     lv_screen_load(screen_gauges);
@@ -413,8 +394,8 @@ void setup() {
 void loop() {
     if (startup) {
         delay(200);
-        if (lv_tick_get() - last_run >= interval) {
-            last_run += interval;
+        if (lv_tick_get() - last_run >= STARTUP_ANIM_INTERVAL) {
+            last_run += STARTUP_ANIM_INTERVAL;
             Serial.println(startup_int);
             Fuel_L_value         = startup_int * 5;
             Fuel_R_value         = startup_int * 5;
@@ -433,9 +414,9 @@ void loop() {
 
     if (first_time && !startup) {
         first_time = false;
-        lv_timer_create(fuel_sensors_timer_cb,       100,  NULL);
-        lv_timer_create(trim_flap_sensors_timer_cb,  100,  NULL);
-        lv_timer_create(flow_sensor_timer_cb,        1000, NULL);
+        lv_timer_create(fuel_sensors_timer_cb,      TIMER_FUEL_SENSOR_MS, NULL);
+        lv_timer_create(trim_flap_sensors_timer_cb, TIMER_TRIM_FLAP_MS,   NULL);
+        lv_timer_create(flow_sensor_timer_cb,        TIMER_FLOW_SENSOR_MS, NULL);
     }
 
     lv_timer_handler_run_in_period(5);
