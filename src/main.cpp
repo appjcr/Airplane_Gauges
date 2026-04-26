@@ -14,12 +14,25 @@ Adafruit_ADS7830 ad7830;
 #include "dispcfg.h"
 #include "AXS15231B_touch.h"
 #include <Arduino_GFX_Library.h>
-
+#include <Preferences.h>
 
 #include <fuel_gauge.h>
 #include <flaps_gauge.h>
 #include <trim_gauge.h>
 #include <flow_gauge.h>
+
+lv_obj_t * screen_setup;
+lv_obj_t * screen_gauges;
+
+// Persistent storage instance
+Preferences prefs;
+lv_obj_t *roller_left, *roller_right;
+// Constants
+const char* fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12"; // Options for fuel levels (12 to 0 gallons)
+const int MAX_FUEL = 12;
+int left_val = 0;
+int right_val = 0;
+
 
 bool first_time = true;
 bool startup = true;
@@ -28,9 +41,9 @@ int16_t startup_int = 0;
 static uint32_t last_run = 0; 
 const uint32_t interval = 200; // in ms
 
-// Define I2C pins
-#define I2C_SDA 17
-#define I2C_SCL 18
+// Define I2C for ADS7830 pins used
+#define ADS_SDA 17
+#define ADS_SCL 18
 
 // Pin 5 as RX Left tank, Pin 6 as RX Right tank, Pin -1 as TX (not used)
 SoftwareSerial mySerial_L(5, -1); 
@@ -54,10 +67,10 @@ int32_t bytesRead_R = 0;
 uint8_t buffer_R[10] = {0,0,0,0,0,0,0,0,0,0}; // Adjust size based on expected line length
 uint8_t value[7];
 
-int16_t Empty_fuel_L_capacitance_value = 1340;
-int16_t Full_fuel_L_capacitance_value = 905;
-int16_t Empty_fuel_R_capacitance_value = 1340;
-int16_t Full_fuel_R_capacitance_value = 905;
+int16_t Empty_fuel_L_capacitance_value = 1590;
+int16_t Full_fuel_L_capacitance_value = 805;
+int16_t Empty_fuel_R_capacitance_value = 1590;
+int16_t Full_fuel_R_capacitance_value = 805;
 int16_t No_flaps_resistance_value = 0;
 int16_t Full_flaps_resistance_value = 255;
 int16_t Down_elev_resistance_value = 0;
@@ -132,6 +145,99 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     }
 }
 
+// Retrieve initial values from permanent memory
+static void get_fuel() {
+    prefs.begin("fuel_data", true); // Open in Read-Only
+    left_val = prefs.getInt("left", 0); // Default to 0 if not found
+    right_val = prefs.getInt("right", 0);
+    prefs.end();
+}
+
+// (Saves to Permanent Memory)
+static void save_fuel() {
+    prefs.begin("fuel_data", false); // Open namespace in R/W mode
+    prefs.putInt("left", left_val);
+    prefs.putInt("right", right_val);
+    prefs.end();
+    Serial.printf("Saved: Left %d, Right %d\n", left_val, right_val);
+}
+
+// Event handler for "Full Fuel" button and save to permanent memory
+static void full_fuel_event_cb(lv_event_t * e) {
+    if(lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        lv_roller_set_selected(roller_left, MAX_FUEL, LV_ANIM_ON);
+        lv_roller_set_selected(roller_right, MAX_FUEL, LV_ANIM_ON);
+        left_val = MAX_FUEL;
+        right_val = MAX_FUEL;
+        save_fuel(); // Save to permanent memory
+        lv_screen_load(screen_gauges);
+    }
+}
+
+// Event handler for "Update" button (Saves to Permanent Memory)
+static void update_event_cb(lv_event_t * e) {
+    if(lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        left_val = lv_roller_get_selected(roller_left);
+        right_val = lv_roller_get_selected(roller_right);
+        save_fuel(); // Save to permanent memory
+        lv_screen_load(screen_gauges);
+    }
+}
+
+// Event handler for "Setup" button
+static void switch_screen_to_setup_event_cb(lv_event_t * e) {
+    if(lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        get_fuel(); // Retrieve from permanent memory
+        lv_roller_set_selected(roller_left, left_val, LV_ANIM_OFF);
+        lv_roller_set_selected(roller_right, right_val, LV_ANIM_OFF);
+        lv_screen_load(screen_setup);
+    }
+}
+
+void setup_fuel_gui() {
+    get_fuel(); // Retrieve from permanent memory last saved fuel levels for left and right tanks
+
+    screen_setup = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen_setup, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen_setup, LV_OPA_COVER, LV_PART_MAIN);
+
+    // 2. Create a main container
+    lv_obj_t * fuel_gui_cont = lv_obj_create(screen_setup);
+    lv_obj_set_size(fuel_gui_cont, 480, 320);
+    lv_obj_center(fuel_gui_cont);
+    lv_obj_set_flex_flow(fuel_gui_cont, LV_FLEX_FLOW_ROW_WRAP); // Layout widgets
+    lv_obj_set_flex_align(fuel_gui_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    // 3. Create Fuel Rollers (0 to 12 gallons)
+    lv_obj_t * label_l = lv_label_create(fuel_gui_cont);
+    lv_label_set_text(label_l, "Fuel Left:");
+    
+    roller_left = lv_roller_create(fuel_gui_cont);
+    lv_roller_set_options(roller_left, fuel_options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(roller_left, left_val, LV_ANIM_OFF);
+    lv_roller_set_visible_row_count(roller_left, 3);
+
+    lv_obj_t * label_r = lv_label_create(fuel_gui_cont);
+    lv_label_set_text(label_r, "Fuel Right:");
+
+    roller_right = lv_roller_create(fuel_gui_cont);
+    lv_roller_set_options(roller_right, fuel_options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(roller_right, right_val, LV_ANIM_OFF);
+    lv_roller_set_visible_row_count(roller_right, 3);
+
+    // 4. Create "Full Fuel" Button
+    lv_obj_t * btn_full = lv_btn_create(fuel_gui_cont);
+    lv_obj_t * label_full = lv_label_create(btn_full);
+    lv_label_set_text(label_full, "Full Fuel");
+    lv_obj_add_event_cb(btn_full, full_fuel_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // 5. Create "Update" Button
+    lv_obj_t * btn_update = lv_btn_create(fuel_gui_cont);
+    lv_obj_t * label_update = lv_label_create(btn_update);
+    lv_label_set_text(label_update, "Update");
+    lv_obj_add_event_cb(btn_update, update_event_cb, LV_EVENT_CLICKED, NULL);
+}
+
 int32_t smooth_fuel_readings_L (int32_t read_fuel_value_L ) {
     total_L = total_L - readings_L[readIndex_L];
     readings_L[readIndex_L] = read_fuel_value_L;
@@ -163,10 +269,10 @@ static void fuel_sensors_timer_cb(lv_timer_t * timer1)
         bytesRead_L = mySerial_L.readBytesUntil('\n', buffer_L, sizeof(buffer_L));
         if (bytesRead_L >= 2) {
             // (Little Endian)
-            L_counter = (buffer_L[0] | buffer_L[1] << 8);
+            Fuel_L_value = (buffer_L[0] | buffer_L[1] << 8);
 
-            if(L_counter < Full_fuel_L_capacitance_value) L_counter = Full_fuel_L_capacitance_value;
-            if(L_counter > Empty_fuel_L_capacitance_value) L_counter = Empty_fuel_L_capacitance_value;
+            if(Fuel_L_value < Full_fuel_L_capacitance_value) Fuel_L_value = Full_fuel_L_capacitance_value;
+            if(Fuel_L_value > Empty_fuel_L_capacitance_value) Fuel_L_value = Empty_fuel_L_capacitance_value;
             Serial.print("Left counter: ");
             Serial.print(L_counter);
             Serial.print(" bytesRead: ");
@@ -183,61 +289,63 @@ static void fuel_sensors_timer_cb(lv_timer_t * timer1)
             Serial.print(buffer_L[0], HEX);
             Serial.print(" ");
             Serial.print(buffer_L[1], HEX);
-            Serial.print(" Decoded 16-bit Counter: ");
-            Serial.println(L_counter);
+            Serial.print(" Decoded 16-bit value: ");
+            Serial.print(Fuel_L_value);
 
-            Fuel_L_value = smooth_fuel_readings_L(L_counter);
-            Serial.printf("Raw smoothed sensor L value: %" PRId32 "\n", Fuel_L_value);
-            // Greater than or equal to 1320 is considered empty, so set to 0% 
-            if (Fuel_L_value >= 1320) Fuel_L_value = 0;
-            if (Fuel_L_value < 1320) Fuel_L_value = 2; 
-            if (Fuel_L_value < 1300) Fuel_L_value = 4; 
-            if (Fuel_L_value < 1290) Fuel_L_value = 6; 
-            if (Fuel_L_value < 1278) Fuel_L_value = 8; 
-            if (Fuel_L_value < 1268) Fuel_L_value = 10; 
-            if (Fuel_L_value < 1258) Fuel_L_value = 12; 
-            if (Fuel_L_value < 1248) Fuel_L_value = 14; 
-            if (Fuel_L_value < 1239) Fuel_L_value = 16; 
-            if (Fuel_L_value < 1229) Fuel_L_value = 18; 
-            if (Fuel_L_value < 1219) Fuel_L_value = 20; 
-            if (Fuel_L_value < 1209) Fuel_L_value = 22; 
-            if (Fuel_L_value < 1198) Fuel_L_value = 24; 
-            if (Fuel_L_value < 1191) Fuel_L_value = 26; 
-            if (Fuel_L_value < 1185) Fuel_L_value = 28; 
-            if (Fuel_L_value < 1178) Fuel_L_value = 30; 
-            if (Fuel_L_value < 1172) Fuel_L_value = 33; 
-            if (Fuel_L_value < 1163) Fuel_L_value = 35; 
-            if (Fuel_L_value < 1154) Fuel_L_value = 37; 
-            if (Fuel_L_value < 1145) Fuel_L_value = 39; 
-            if (Fuel_L_value < 1137) Fuel_L_value = 42; 
-            if (Fuel_L_value < 1130) Fuel_L_value = 44; 
-            if (Fuel_L_value < 1122) Fuel_L_value = 46; 
-            if (Fuel_L_value < 1115) Fuel_L_value = 48; 
-            if (Fuel_L_value < 1107) Fuel_L_value = 50; 
-            if (Fuel_L_value < 1099) Fuel_L_value = 52; 
-            if (Fuel_L_value < 1090) Fuel_L_value = 54; 
-            if (Fuel_L_value < 1082) Fuel_L_value = 56; 
-            if (Fuel_L_value < 1073) Fuel_L_value = 58; 
-            if (Fuel_L_value < 1064) Fuel_L_value = 60; 
-            if (Fuel_L_value < 1056) Fuel_L_value = 62; 
-            if (Fuel_L_value < 1048) Fuel_L_value = 64; 
-            if (Fuel_L_value < 1040) Fuel_L_value = 66; 
-            if (Fuel_L_value < 1031) Fuel_L_value = 68; 
-            if (Fuel_L_value < 1022) Fuel_L_value = 70; 
-            if (Fuel_L_value < 1013) Fuel_L_value = 72; 
-            if (Fuel_L_value < 1005) Fuel_L_value = 74; 
-            if (Fuel_L_value < 995) Fuel_L_value = 76; 
-            if (Fuel_L_value < 985) Fuel_L_value = 79; 
-            if (Fuel_L_value < 975) Fuel_L_value = 81; 
-            if (Fuel_L_value < 965) Fuel_L_value = 83; 
-            if (Fuel_L_value < 952) Fuel_L_value = 85; 
-            if (Fuel_L_value < 943) Fuel_L_value = 87; 
-            if (Fuel_L_value < 932) Fuel_L_value = 89; 
-            if (Fuel_L_value < 921) Fuel_L_value = 91; 
-            if (Fuel_L_value < 916) Fuel_L_value = 93; 
-            if (Fuel_L_value < 911) Fuel_L_value = 95; 
-            if (Fuel_L_value < 905) Fuel_L_value = 97; 
-            if (Fuel_L_value < 900) Fuel_L_value = 100; 
+            averageFuel_L = smooth_fuel_readings_L(Fuel_L_value);
+            Serial.printf("  Raw smoothed sensor L value: %" PRId32, averageFuel_L);
+            // Greater than or equal to 1475 is considered empty, so set to 0% 
+            if (averageFuel_L >= 1475) Fuel_L_value = 0;
+            if (averageFuel_L < 1457) Fuel_L_value = 2; 
+            if (averageFuel_L < 1437) Fuel_L_value = 4; 
+            if (averageFuel_L < 1418) Fuel_L_value = 6; 
+            if (averageFuel_L < 1400) Fuel_L_value = 8; 
+            if (averageFuel_L < 1383) Fuel_L_value = 10; 
+            if (averageFuel_L < 1366) Fuel_L_value = 12; 
+            if (averageFuel_L < 1349) Fuel_L_value = 14; 
+            if (averageFuel_L < 1332) Fuel_L_value = 16; 
+            if (averageFuel_L < 1318) Fuel_L_value = 18; 
+            if (averageFuel_L < 1304) Fuel_L_value = 20; 
+            if (averageFuel_L < 1290) Fuel_L_value = 22; 
+            if (averageFuel_L < 1276) Fuel_L_value = 24; 
+            if (averageFuel_L < 1266) Fuel_L_value = 26; 
+            if (averageFuel_L < 1257) Fuel_L_value = 28; 
+            if (averageFuel_L < 1248) Fuel_L_value = 30; 
+            if (averageFuel_L < 1239) Fuel_L_value = 33; 
+            if (averageFuel_L < 1236) Fuel_L_value = 35; 
+            if (averageFuel_L < 1232) Fuel_L_value = 37; 
+            if (averageFuel_L < 1228) Fuel_L_value = 39; 
+            if (averageFuel_L < 1225) Fuel_L_value = 42; 
+            if (averageFuel_L < 1219) Fuel_L_value = 44; 
+            if (averageFuel_L < 1213) Fuel_L_value = 46; 
+            if (averageFuel_L < 1208) Fuel_L_value = 48; 
+            if (averageFuel_L < 1202) Fuel_L_value = 50; 
+            if (averageFuel_L < 1187) Fuel_L_value = 52;
+            if (averageFuel_L < 1172) Fuel_L_value = 54; 
+            if (averageFuel_L < 1157) Fuel_L_value = 56; 
+            if (averageFuel_L < 1142) Fuel_L_value = 58; 
+            if (averageFuel_L < 1134) Fuel_L_value = 60; 
+            if (averageFuel_L < 1127) Fuel_L_value = 62; 
+            if (averageFuel_L < 1119) Fuel_L_value = 64; 
+            if (averageFuel_L < 1112) Fuel_L_value = 66; 
+            if (averageFuel_L < 1102) Fuel_L_value = 68; 
+            if (averageFuel_L < 1092) Fuel_L_value = 70; 
+            if (averageFuel_L < 1082) Fuel_L_value = 72; 
+            if (averageFuel_L < 1072) Fuel_L_value = 74; 
+            if (averageFuel_L < 1057) Fuel_L_value = 76; 
+            if (averageFuel_L < 1044) Fuel_L_value = 79; 
+            if (averageFuel_L < 1030) Fuel_L_value = 81; 
+            if (averageFuel_L < 1017) Fuel_L_value = 83; 
+            if (averageFuel_L < 1016) Fuel_L_value = 85; 
+            if (averageFuel_L < 1015) Fuel_L_value = 87; 
+            if (averageFuel_L < 1014) Fuel_L_value = 89; 
+            if (averageFuel_L < 1013) Fuel_L_value = 91; 
+            if (averageFuel_L < 1012) Fuel_L_value = 93; 
+            if (averageFuel_L < 1011) Fuel_L_value = 95; 
+            if (averageFuel_L < 1010) Fuel_L_value = 98; 
+            if (averageFuel_L < 1000) Fuel_L_value = 100; 
+            Serial.printf(" Converted Fuel_L_value: %" PRId32 "\n", Fuel_L_value);
+
             while (mySerial_L.available() > 0) {
                 mySerial_L.read();
             }
@@ -252,10 +360,10 @@ static void fuel_sensors_timer_cb(lv_timer_t * timer1)
         bytesRead_R = mySerial_R.readBytesUntil('\n', buffer_R, sizeof(buffer_R));
         if (bytesRead_R >= 2) {
             // (Little Endian)
-            R_counter = (buffer_R[0] | buffer_R[1] << 8);
+            Fuel_R_value = (buffer_R[0] | buffer_R[1] << 8);
 
-            if(R_counter < Full_fuel_R_capacitance_value) R_counter = Full_fuel_R_capacitance_value;
-            if(R_counter > Empty_fuel_R_capacitance_value) R_counter = Empty_fuel_R_capacitance_value;
+            if(Fuel_R_value < Full_fuel_R_capacitance_value) Fuel_R_value = Full_fuel_R_capacitance_value;
+            if(Fuel_R_value > Empty_fuel_R_capacitance_value) Fuel_R_value = Empty_fuel_R_capacitance_value;
             Serial.print("Right counter: ");
             Serial.print(R_counter);
             Serial.print(" bytesRead: ");
@@ -273,60 +381,62 @@ static void fuel_sensors_timer_cb(lv_timer_t * timer1)
             Serial.print(" ");
             Serial.print(buffer_R[1], HEX);
             Serial.print(" Decoded 16-bit Counter: ");
-            Serial.println(R_counter);
+            Serial.print(Fuel_R_value);
 
-            Fuel_R_value = smooth_fuel_readings_R(R_counter);
-            Serial.printf("Raw smoothed sensor R value: %" PRId32 "\n", Fuel_R_value);
+            averageFuel_R = smooth_fuel_readings_R(Fuel_R_value);
+            Serial.printf("  Raw smoothed sensor R value: %" PRId32, averageFuel_R);
             // Greater than or equal to 1320 is considered empty, so set to 0% 
-            if (Fuel_R_value >= 1320) Fuel_R_value = 0;
-            if (Fuel_R_value < 1320) Fuel_R_value = 2; 
-            if (Fuel_R_value < 1300) Fuel_R_value = 4; 
-            if (Fuel_R_value < 1290) Fuel_R_value = 6; 
-            if (Fuel_R_value < 1278) Fuel_R_value = 8; 
-            if (Fuel_R_value < 1268) Fuel_R_value = 10; 
-            if (Fuel_R_value < 1258) Fuel_R_value = 12; 
-            if (Fuel_R_value < 1248) Fuel_R_value = 14; 
-            if (Fuel_R_value < 1239) Fuel_R_value = 16; 
-            if (Fuel_R_value < 1229) Fuel_R_value = 18; 
-            if (Fuel_R_value < 1219) Fuel_R_value = 20; 
-            if (Fuel_R_value < 1209) Fuel_R_value = 22; 
-            if (Fuel_R_value < 1198) Fuel_R_value = 24; 
-            if (Fuel_R_value < 1191) Fuel_R_value = 26; 
-            if (Fuel_R_value < 1185) Fuel_R_value = 28; 
-            if (Fuel_R_value < 1178) Fuel_R_value = 30;
-            if (Fuel_R_value < 1172) Fuel_R_value = 33; 
-            if (Fuel_R_value < 1163) Fuel_R_value = 35; 
-            if (Fuel_R_value < 1154) Fuel_R_value = 37; 
-            if (Fuel_R_value < 1145) Fuel_R_value = 39; 
-            if (Fuel_R_value < 1137) Fuel_R_value = 42; 
-            if (Fuel_R_value < 1130) Fuel_R_value = 44; 
-            if (Fuel_R_value < 1122) Fuel_R_value = 46; 
-            if (Fuel_R_value < 1115) Fuel_R_value = 48; 
-            if (Fuel_R_value < 1107) Fuel_R_value = 50; 
-            if (Fuel_R_value < 1099) Fuel_R_value = 52; 
-            if (Fuel_R_value < 1090) Fuel_R_value = 54; 
-            if (Fuel_R_value < 1082) Fuel_R_value = 56; 
-            if (Fuel_R_value < 1073) Fuel_R_value = 58; 
-            if (Fuel_R_value < 1064) Fuel_R_value = 60; 
-            if (Fuel_R_value < 1056) Fuel_R_value = 62; 
-            if (Fuel_R_value < 1048) Fuel_R_value = 64; 
-            if (Fuel_R_value < 1040) Fuel_R_value = 66; 
-            if (Fuel_R_value < 1031) Fuel_R_value = 68; 
-            if (Fuel_R_value < 1022) Fuel_R_value = 70; 
-            if (Fuel_R_value < 1013) Fuel_R_value = 72; 
-            if (Fuel_R_value < 1005) Fuel_R_value = 74; 
-            if (Fuel_R_value < 995) Fuel_R_value = 76;
-            if (Fuel_R_value < 985) Fuel_R_value = 79; 
-            if (Fuel_R_value < 975) Fuel_R_value = 81; 
-            if (Fuel_R_value < 965) Fuel_R_value = 83; 
-            if (Fuel_R_value < 952) Fuel_R_value = 85; 
-            if (Fuel_R_value < 943) Fuel_R_value = 87; 
-            if (Fuel_R_value < 932) Fuel_R_value = 89; 
-            if (Fuel_R_value < 921) Fuel_R_value = 91; 
-            if (Fuel_R_value < 916) Fuel_R_value = 93; 
-            if (Fuel_R_value < 911) Fuel_R_value = 95; 
-            if (Fuel_R_value < 905) Fuel_R_value = 97; 
-            if (Fuel_R_value < 900) Fuel_R_value = 100; 
+            if (averageFuel_R >= 1320) Fuel_R_value = 0;
+            if (averageFuel_R < 1320) Fuel_R_value = 2; 
+            if (averageFuel_R < 1300) Fuel_R_value = 4; 
+            if (averageFuel_R < 1290) Fuel_R_value = 6; 
+            if (averageFuel_R < 1278) Fuel_R_value = 8; 
+            if (averageFuel_R < 1268) Fuel_R_value = 10; 
+            if (averageFuel_R < 1258) Fuel_R_value = 12; 
+            if (averageFuel_R < 1248) Fuel_R_value = 14; 
+            if (averageFuel_R < 1239) Fuel_R_value = 16; 
+            if (averageFuel_R < 1229) Fuel_R_value = 18; 
+            if (averageFuel_R < 1219) Fuel_R_value = 20; 
+            if (averageFuel_R < 1209) Fuel_R_value = 22; 
+            if (averageFuel_R < 1198) Fuel_R_value = 24; 
+            if (averageFuel_R < 1191) Fuel_R_value = 26; 
+            if (averageFuel_R < 1185) Fuel_R_value = 28; 
+            if (averageFuel_R < 1178) Fuel_R_value = 30;
+            if (averageFuel_R < 1172) Fuel_R_value = 33; 
+            if (averageFuel_R < 1163) Fuel_R_value = 35; 
+            if (averageFuel_R < 1154) Fuel_R_value = 37; 
+            if (averageFuel_R < 1145) Fuel_R_value = 39; 
+            if (averageFuel_R < 1137) Fuel_R_value = 42; 
+            if (averageFuel_R < 1130) Fuel_R_value = 44; 
+            if (averageFuel_R < 1122) Fuel_R_value = 46; 
+            if (averageFuel_R < 1115) Fuel_R_value = 48; 
+            if (averageFuel_R < 1107) Fuel_R_value = 50; 
+            if (averageFuel_R < 1099) Fuel_R_value = 52; 
+            if (averageFuel_R < 1090) Fuel_R_value = 54; 
+            if (averageFuel_R < 1082) Fuel_R_value = 56; 
+            if (averageFuel_R < 1073) Fuel_R_value = 58; 
+            if (averageFuel_R < 1064) Fuel_R_value = 60; 
+            if (averageFuel_R < 1056) Fuel_R_value = 62; 
+            if (averageFuel_R < 1048) Fuel_R_value = 64; 
+            if (averageFuel_R < 1040) Fuel_R_value = 66; 
+            if (averageFuel_R < 1031) Fuel_R_value = 68; 
+            if (averageFuel_R < 1022) Fuel_R_value = 70; 
+            if (averageFuel_R < 1013) Fuel_R_value = 72; 
+            if (averageFuel_R < 1005) Fuel_R_value = 74; 
+            if (averageFuel_R < 995) Fuel_R_value = 76;
+            if (averageFuel_R < 985) Fuel_R_value = 79; 
+            if (averageFuel_R < 975) Fuel_R_value = 81; 
+            if (averageFuel_R < 965) Fuel_R_value = 83; 
+            if (averageFuel_R < 952) Fuel_R_value = 85; 
+            if (averageFuel_R < 943) Fuel_R_value = 87; 
+            if (averageFuel_R < 932) Fuel_R_value = 89; 
+            if (averageFuel_R < 921) Fuel_R_value = 91;
+            if (averageFuel_R < 916) Fuel_R_value = 93; 
+            if (averageFuel_R < 911) Fuel_R_value = 95; 
+            if (averageFuel_R < 905) Fuel_R_value = 97; 
+            if (averageFuel_R < 900) Fuel_R_value = 100; 
+            Serial.printf(" Converted Fuel_R_value: %" PRId32 "\n", Fuel_R_value);
+
             while (mySerial_R.available() > 0) {
                 mySerial_R.read();
             }
@@ -423,11 +533,12 @@ void setup() {
     mySerial_L.begin(1200); 
     mySerial_R.begin(1200); 
 
-    Wire.begin(I2C_SDA, I2C_SCL);
+    // Initialize ADS7830 on pins 17 and 18
+    Wire1.begin(ADS_SDA, ADS_SCL, 100000); // 100kHz
     Serial.println("Adafruit ADS7830 start\n");
-    if (!ad7830.begin()) {
+    if (!ad7830.begin(0x48, &Wire1)) { // Pass the custom bus to the library
         Serial.println("Failed to initialize ADS7830!\n");
-        while(1);
+        while(1);   
     }
 
     Serial.println("Arduino_GFX LVGL ");
@@ -484,10 +595,19 @@ void setup() {
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, my_touchpad_read);
 
-    // Set background color of main screen
-    lv_obj_t * scr = lv_scr_act();
-    lv_obj_set_style_bg_color(scr, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
+    // Create a screen and background color 
+    screen_gauges = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(screen_gauges, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
+
+    // Button on Screen 2 to go back to Screen 1
+    lv_obj_t * btn2 = lv_button_create(screen_gauges);
+    lv_obj_align(btn2, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t * label2 = lv_label_create(btn2);
+    lv_label_set_text(label2, "Setup");
+    lv_obj_add_event_cb(btn2, switch_screen_to_setup_event_cb, LV_EVENT_CLICKED, screen_gauges);
+
+
 
     pinMode(sensorPin, INPUT);
     // Trigger pulseCounter function on rising edge
@@ -508,9 +628,15 @@ void setup() {
     // Update display Flow gauge every 250ms
     flow_gauge(250);
 
+    setup_fuel_gui();
+
+    lv_screen_load(screen_gauges);
+
+
 }
 
 void loop() {
+
     if(startup==true) {
         delay(200);
         if (lv_tick_get() - last_run >= interval) {
@@ -537,6 +663,7 @@ void loop() {
         lv_timer_create(fuel_sensors_timer_cb, 100, NULL);
         lv_timer_create(trim_flap_sensors_timer_cb, 100, NULL);
         lv_timer_create(flow_sensor_timer_cb, 1000, NULL);
+//        lv_screen_load(screen_setup);
     }
 
 

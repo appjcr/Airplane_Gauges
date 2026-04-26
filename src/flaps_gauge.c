@@ -55,7 +55,7 @@ static void flaps_anim_timer_cb(lv_timer_t * timer1)
 void flaps_gauge(int gauge_timer_value) {
     // Expecting value ranges from 0-20 in Flaps_position_value
     // 1. Create the container (transparent, no border, bottom-right)
-    lv_obj_t * cont = lv_obj_create(lv_screen_active());
+    lv_obj_t * cont = lv_obj_create(screen_gauges);
     lv_obj_set_size(cont, 115, 150);
     lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(cont, 0, LV_PART_MAIN);

@@ -107,7 +107,7 @@ static void add_section(lv_obj_t * target_scale,
 void fuel_gaugeL(int gaugeL_timer_value) {
     // Expect vales in the range of 0-100 in Fuel_L_value
     // Set-create gauge design
-    scale1 = lv_scale_create(lv_screen_active());
+    scale1 = lv_scale_create(screen_gauges);
     lv_obj_align(scale1,LV_ALIGN_TOP_LEFT,30,30);
     lv_obj_set_size(scale1, 150, 150);
     lv_scale_set_mode(scale1, LV_SCALE_MODE_ROUND_OUTER);
@@ -158,14 +158,14 @@ void fuel_gaugeL(int gaugeL_timer_value) {
 
     lv_scale_set_line_needle_value(scale1, needle_line1, 50, current_hr1);
 
-    lv_obj_t * circle1 = lv_obj_create(lv_screen_active());
+    lv_obj_t * circle1 = lv_obj_create(screen_gauges);
     lv_obj_set_size(circle1, 108, 108);
     lv_obj_align(circle1,LV_ALIGN_TOP_LEFT,51,50);
 
 
     lv_obj_set_style_radius(circle1, LV_RADIUS_CIRCLE, 0);
 
-    lv_obj_set_style_bg_color(circle1, lv_obj_get_style_bg_color(lv_screen_active(), LV_PART_MAIN), 0);
+    lv_obj_set_style_bg_color(circle1, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
     lv_obj_set_style_bg_opa(circle1, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(circle1, 0, LV_PART_MAIN);
 
@@ -200,7 +200,7 @@ void fuel_gaugeL(int gaugeL_timer_value) {
 void fuel_gaugeR(int gaugeR_timer_value) {
     // Expect vales in the range of 0-100 in Fuel_R_value
     // Set-create gauge design
-    scale2 = lv_scale_create(lv_screen_active());
+    scale2 = lv_scale_create(screen_gauges);
     lv_obj_align(scale2,LV_ALIGN_TOP_RIGHT,-40,30);
     lv_obj_set_size(scale2, 150, 150);
     lv_scale_set_mode(scale2, LV_SCALE_MODE_ROUND_OUTER);
@@ -252,14 +252,14 @@ void fuel_gaugeR(int gaugeR_timer_value) {
 
     lv_scale_set_line_needle_value(scale2, needle_line2, 50, current_hr2);
 
-    lv_obj_t * circle2 = lv_obj_create(lv_screen_active());
+    lv_obj_t * circle2 = lv_obj_create(screen_gauges);
     lv_obj_set_size(circle2, 108, 108);
     lv_obj_align(circle2,LV_ALIGN_TOP_RIGHT,-61,50);
 
 
     lv_obj_set_style_radius(circle2, LV_RADIUS_CIRCLE, 0);
 
-    lv_obj_set_style_bg_color(circle2, lv_obj_get_style_bg_color(lv_screen_active(), LV_PART_MAIN), 0);
+    lv_obj_set_style_bg_color(circle2, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
     lv_obj_set_style_bg_opa(circle2, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(circle2, 0, LV_PART_MAIN);
 

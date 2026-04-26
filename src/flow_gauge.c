@@ -33,7 +33,7 @@ void flow_gauge(int gauge_timer_value)
 {
     // Set-create gauge design
     // Create the container
-    lv_obj_t * cont = lv_obj_create(lv_screen_active());
+    lv_obj_t * cont = lv_obj_create(screen_gauges);
     lv_obj_set_size(cont, 160, 180);
     lv_obj_set_style_bg_color(cont, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN);

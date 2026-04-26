@@ -18,6 +18,7 @@ extern "C" {
 /**********************
  *      TYPEDEFS
  **********************/
+extern lv_obj_t * screen_gauges;
 extern float flow_value;
 extern float remail_value;
 extern float flow_used_value;

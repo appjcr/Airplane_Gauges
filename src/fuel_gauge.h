@@ -18,6 +18,7 @@ extern "C" {
 /**********************
  *      TYPEDEFS
  **********************/
+extern lv_obj_t * screen_gauges;
 extern int32_t Fuel_L_value;
 extern int32_t Fuel_R_value;
 
