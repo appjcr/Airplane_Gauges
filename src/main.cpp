@@ -256,7 +256,7 @@ void setup() {
     lv_obj_set_style_bg_opa(state.ui.screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
 
     lv_obj_t *btn_setup = UIUtils::create_button_with_label(state.ui.screen_gauges, "Setup");
-    lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 2);
+    lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 4);
     lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, state.ui.screen_gauges);
 
     Serial.println("Start receiving TTL to serial feeds\n");
