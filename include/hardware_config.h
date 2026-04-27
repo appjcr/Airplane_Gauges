@@ -4,37 +4,37 @@
 
 // ── Display Configuration (TFT) ───────────────────────
 namespace Display {
-    constexpr uint16_t WIDTH = 480;
-    constexpr uint16_t HEIGHT = 320;
-    constexpr uint16_t ROTATION = 0;
+    constexpr uint16_t WIDTH = 320;
+    constexpr uint16_t HEIGHT = 480;
+    constexpr uint16_t ROTATION = 1;
     constexpr uint32_t SPI_SPEED = 40000000UL;
 }
 
 // ── Display Backlight ─────────────────────────────────
 namespace TFT {
-    constexpr uint8_t BL_PIN = 45;
+    constexpr uint8_t BL_PIN = 1;
 }
 
 // ── SPI Pins ──────────────────────────────────────────
-namespace SPI {
-    constexpr uint8_t CS = 46;
-    constexpr uint8_t SCK = 48;
-    constexpr uint8_t SDA0 = 3;
-    constexpr uint8_t SDA1 = 9;
-    constexpr uint8_t SDA2 = 47;
-    constexpr uint8_t SDA3 = 21;
+namespace SPII{
+    constexpr uint8_t CS = 45;
+    constexpr uint8_t SCK = 47;
+    constexpr uint8_t SDA0 = 21;
+    constexpr uint8_t SDA1 = 48;
+    constexpr uint8_t SDA2 = 40;
+    constexpr uint8_t SDA3 = 39;
 }
 
 // ── Touch Controller ──────────────────────────────────
 namespace Touch {
-    constexpr uint8_t SCL = 1;
-    constexpr uint8_t SDA = 2;
-    constexpr uint8_t INT = 42;
-    constexpr uint8_t ADDR = 0x15;
-    constexpr uint16_t X_MIN = 0;
-    constexpr uint16_t X_MAX = 479;
-    constexpr uint16_t Y_MIN = 0;
-    constexpr uint16_t Y_MAX = 319;
+    constexpr uint8_t SCL = 8;
+    constexpr uint8_t SDA = 4;
+    constexpr uint8_t INT = 3;
+    constexpr uint8_t ADDR = 0x3B;
+    constexpr uint16_t X_MIN = 12;
+    constexpr uint16_t X_MAX = 310;
+    constexpr uint16_t Y_MIN = 14;
+    constexpr uint16_t Y_MAX = 461;
 }
 
 // ── ADS7830 ADC (I2C) ─────────────────────────────────

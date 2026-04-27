@@ -1,6 +1,7 @@
 #include <lvgl.h>
 #include "fuel_gauge.h"
 #include "sensor_utils.h"
+#include "app_state.h"
 
 int32_t Fuel_L_value = 0;
 int32_t Fuel_R_value = 0;
@@ -86,7 +87,8 @@ struct FuelGaugeConfig {
 static void create_fuel_gauge(const FuelGaugeConfig &cfg) {
     ensure_zone_styles();
 
-    lv_obj_t *scale = lv_scale_create(screen_gauges);
+    AppState &state = AppState::instance();
+    lv_obj_t *scale = lv_scale_create(state.ui.screen_gauges);
     lv_obj_align(scale, cfg.scale_align, cfg.scale_x, cfg.scale_y);
     lv_obj_set_size(scale, 150, 150);
     lv_scale_set_mode(scale, LV_SCALE_MODE_ROUND_OUTER);
@@ -118,11 +120,11 @@ static void create_fuel_gauge(const FuelGaugeConfig &cfg) {
     lv_obj_set_style_pad_right(needle, cfg.needle_pad_right, LV_PART_MAIN);
     lv_scale_set_line_needle_value(scale, needle, 50, cfg.initial_value);
 
-    lv_obj_t *circle = lv_obj_create(screen_gauges);
+    lv_obj_t *circle = lv_obj_create(state.ui.screen_gauges);
     lv_obj_set_size(circle, 108, 108);
     lv_obj_align(circle, cfg.circle_align, cfg.circle_x, cfg.circle_y);
     lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(circle, lv_obj_get_style_bg_color(screen_gauges, LV_PART_MAIN), 0);
+    lv_obj_set_style_bg_color(circle, lv_obj_get_style_bg_color(state.ui.screen_gauges, LV_PART_MAIN), 0);
     lv_obj_set_style_bg_opa(circle, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(circle, 0, LV_PART_MAIN);
 

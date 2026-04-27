@@ -42,7 +42,7 @@ void calculate_flow_metrics(uint32_t current_pulses,
     gallons_out += (float)pulses_in_interval / k_factor;
 }
 
-uint32_t get_fuel_zone_color(int32_t fuel_percentage) {
+lv_color_t get_fuel_zone_color(int32_t fuel_percentage) {
     if (fuel_percentage < 15) {
         return lv_palette_main(LV_PALETTE_RED);
     } else if (fuel_percentage < 25) {

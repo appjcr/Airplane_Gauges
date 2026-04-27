@@ -1,5 +1,6 @@
 #include <lvgl.h>
 #include "flaps_gauge.h"
+#include "app_state.h"
 
 int32_t Flaps_position_value = 0;
 int32_t old_Flaps_position_value = -1;
@@ -31,7 +32,8 @@ static void flaps_anim_timer_cb(lv_timer_t *) {
 }
 
 void flaps_gauge(int gauge_timer_value) {
-    lv_obj_t *cont = lv_obj_create(screen_gauges);
+    AppState &state = AppState::instance();
+    lv_obj_t *cont = lv_obj_create(state.ui.screen_gauges);
     lv_obj_set_size(cont, 115, 150);
     lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(cont, 0, LV_PART_MAIN);

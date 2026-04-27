@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "sensors.h"
+#include <lvgl.h>
 
 namespace SensorUtils {
 
@@ -23,6 +24,6 @@ void calculate_flow_metrics(uint32_t current_pulses,
                            float &gallons_out);
 
 // Determine fuel color zone (red/yellow/green)
-uint32_t get_fuel_zone_color(int32_t fuel_percentage);
+lv_color_t get_fuel_zone_color(int32_t fuel_percentage);
 
 } // namespace SensorUtils

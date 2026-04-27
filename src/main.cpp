@@ -23,7 +23,7 @@ Adafruit_ADS7830 ad7830;
 SoftwareSerial serial_fuel_left(FuelSensors::PIN_LEFT, -1);
 SoftwareSerial serial_fuel_right(FuelSensors::PIN_RIGHT, -1);
 AXS15231B_Touch touch(Touch::SCL, Touch::SDA, Touch::INT, Touch::ADDR, Display::ROTATION);
-Arduino_DataBus *bus = new Arduino_ESP32QSPI(SPI::CS, SPI::SCK, SPI::SDA0, SPI::SDA1, SPI::SDA2, SPI::SDA3);
+Arduino_DataBus *bus = new Arduino_ESP32QSPI(SPII::CS, SPII::SCK, SPII::SDA0, SPII::SDA1, SPII::SDA2, SPII::SDA3);
 Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, Display::WIDTH, Display::HEIGHT);
 Arduino_Canvas *gfx = new Arduino_Canvas(Display::WIDTH, Display::HEIGHT, g, 0, 0, Display::ROTATION);
 
@@ -259,17 +259,6 @@ void setup() {
 #endif
 
     Serial.begin(Startup::SERIAL_BAUD);
-    Serial.println("Start receiving TTL to serial feeds\n");
-    serial_fuel_left.begin(FuelSensors::BAUD);
-    serial_fuel_right.begin(FuelSensors::BAUD);
-
-    Wire1.begin(ADC::SDA, ADC::SCL, ADC::I2C_FREQ);
-    Serial.println("Adafruit ADS7830 start\n");
-    if (!ad7830.begin(ADC::I2C_ADDR, &Wire1)) {
-        Serial.println("Failed to initialize ADS7830!\n");
-        while (1);
-    }
-
     Serial.println("Arduino_GFX LVGL ");
     String lvgl_version = String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch() + " example";
     Serial.println(lvgl_version);
@@ -290,9 +279,6 @@ void setup() {
     touch.enOffsetCorrection(true);
     touch.setOffsets(Touch::X_MIN, Touch::X_MAX, Display::WIDTH - 1, Touch::Y_MIN, Touch::Y_MAX, Display::HEIGHT - 1);
 
-    AppState &state = AppState::instance();
-    state.fuel.smooth_left = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
-    state.fuel.smooth_right = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
 
     lv_init();
     lv_tick_set_cb(millis_cb);
@@ -318,13 +304,29 @@ void setup() {
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, my_touchpad_read);
 
-    state.ui.screen_gauges = lv_obj_create(nullptr);
+    AppState &state = AppState::instance();
+
+    state.ui.screen_gauges = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(state.ui.screen_gauges, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(state.ui.screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
 
     lv_obj_t *btn_setup = UIUtils::create_button_with_label(state.ui.screen_gauges, "Setup");
     lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, state.ui.screen_gauges);
+
+    Serial.println("Start receiving TTL to serial feeds\n");
+    serial_fuel_left.begin(FuelSensors::BAUD);
+    serial_fuel_right.begin(FuelSensors::BAUD);
+
+    Wire1.begin(ADC::SDA, ADC::SCL, ADC::I2C_FREQ);
+    Serial.println("Adafruit ADS7830 start\n");
+    if (!ad7830.begin(ADC::I2C_ADDR, &Wire1)) {
+        Serial.println("Failed to initialize ADS7830!\n");
+        while (1);
+    }
+
+    state.fuel.smooth_left = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
+    state.fuel.smooth_right = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
 
     pinMode(FlowSensor::PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, FALLING);
@@ -336,6 +338,7 @@ void setup() {
     flow_gauge(Timers::GAUGE_FLOW_MS);
 
     setup_fuel_gui();
+
     lv_screen_load(state.ui.screen_gauges);
 }
 

@@ -1,5 +1,6 @@
 #include <lvgl.h>
 #include "flow_gauge.h"
+#include "app_state.h"
 
 float flow_value = 0.00f;
 float remain_value = 0.00f;
@@ -33,7 +34,7 @@ struct FlowLabel {
     int unit_y;
 };
 
-static lv_obj_t *create_flow_metric(lv_obj_t *cont, const FlowLabel &cfg) {
+static lv_obj_t *create_flow_gph(lv_obj_t *cont, const FlowLabel &cfg) {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, cfg.label_text);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_18, 0);
@@ -57,7 +58,8 @@ static lv_obj_t *create_flow_metric(lv_obj_t *cont, const FlowLabel &cfg) {
 }
 
 void flow_gauge(int gauge_timer_value) {
-    lv_obj_t *cont = lv_obj_create(screen_gauges);
+    AppState &state = AppState::instance();
+    lv_obj_t *cont = lv_obj_create(state.ui.screen_gauges);
     lv_obj_set_size(cont, 160, 180);
     lv_obj_set_style_bg_color(cont, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN);
@@ -66,15 +68,15 @@ void flow_gauge(int gauge_timer_value) {
 
     FlowLabel flow_cfg = {
         "Flow:", -15, 4, "%.2f", 38, 0, &flow_value_label, "gph", 100, 4};
-    create_flow_metric(cont, flow_cfg);
+    create_flow_gph(cont, flow_cfg);
 
     FlowLabel remain_cfg = {
         "Rem: ", -15, 44, "%.2f", 38, 40, &remain_value_label, " g", 100, 44};
-    create_flow_metric(cont, remain_cfg);
+    create_flow_gph(cont, remain_cfg);
 
     FlowLabel used_cfg = {
         "Used: ", -15, 84, "%.2f", 38, 80, &flow_used_value_label, " g", 100, 84};
-    create_flow_metric(cont, used_cfg);
+    create_flow_gph(cont, used_cfg);
 
     lv_obj_t *time_label = lv_label_create(cont);
     lv_label_set_text(time_label, "T to E: ");

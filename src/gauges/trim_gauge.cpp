@@ -1,6 +1,7 @@
 #include <lvgl.h>
 #include "trim_gauge.h"
 #include "hardware_config.h"
+#include "app_state.h"
 
 int32_t elev_trim_value = 0;
 int32_t ailer_trim_value = 0;
@@ -26,7 +27,8 @@ static void trim_anim_timer_cb(lv_timer_t *) {
 }
 
 void trim_gauge(int gauge_timer_value) {
-    lv_obj_t *cont = lv_obj_create(screen_gauges);
+    AppState &state = AppState::instance();
+    lv_obj_t *cont = lv_obj_create(state.ui.screen_gauges);
     lv_obj_set_size(cont, 180, 180);
     lv_obj_set_style_bg_color(cont, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, LV_PART_MAIN);
