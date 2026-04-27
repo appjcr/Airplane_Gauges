@@ -1,37 +1,11 @@
-/**
- * @file trim_gauge.h
- *
- */
+#pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <lvgl.h>
+#include <cstdint>
 
-/*********************
- *      INCLUDES
- *********************/
-
-/*********************
- *      DEFINES
- *********************/
-
-/**********************
- *      TYPEDEFS
- **********************/
-extern lv_obj_t * screen_gauges;
+extern lv_obj_t *screen_gauges;
 extern int32_t elev_trim_value;
 extern int32_t ailer_trim_value;
 
-/**********************
- * GLOBAL PROTOTYPES
- **********************/
 void trim_gauge(int gauge_timer_value);
-
-/**********************
- *      MACROS
- **********************/
-
-#ifdef __cplusplus
-} /*extern "C"*/
-#endif
 

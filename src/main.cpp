@@ -2,128 +2,76 @@
 #include <SoftwareSerial.h>
 #include <Wire.h>
 #include <Adafruit_ADS7830.h>
-Adafruit_ADS7830 ad7830;
-
 #include <lvgl.h>
-#include "config.h"
-#include "pincfg.h"
-#include "dispcfg.h"
-#include "AXS15231B_touch.h"
 #include <Arduino_GFX_Library.h>
 #include <Preferences.h>
 
-#include <fuel_gauge.h>
-#include <flaps_gauge.h>
-#include <trim_gauge.h>
-#include <flow_gauge.h>
+#include "hardware_config.h"
+#include "sensors.h"
+#include "sensor_utils.h"
+#include "ui_utils.h"
+#include "app_state.h"
+#include "AXS15231B_touch.h"
 
-lv_obj_t * screen_setup;
-lv_obj_t * screen_gauges;
+#include "fuel_gauge.h"
+#include "flaps_gauge.h"
+#include "trim_gauge.h"
+#include "flow_gauge.h"
+
+// Global instances
+Adafruit_ADS7830 ad7830;
+SoftwareSerial serial_fuel_left(FuelSensors::PIN_LEFT, -1);
+SoftwareSerial serial_fuel_right(FuelSensors::PIN_RIGHT, -1);
+AXS15231B_Touch touch(Touch::SCL, Touch::SDA, Touch::INT, Touch::ADDR, Display::ROTATION);
+Arduino_DataBus *bus = new Arduino_ESP32QSPI(SPI::CS, SPI::SCK, SPI::SDA0, SPI::SDA1, SPI::SDA2, SPI::SDA3);
+Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, Display::WIDTH, Display::HEIGHT);
+Arduino_Canvas *gfx = new Arduino_Canvas(Display::WIDTH, Display::HEIGHT, g, 0, 0, Display::ROTATION);
 
 Preferences prefs;
-lv_obj_t *roller_left, *roller_right;
-const char* fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
-int left_val = 0;
-int right_val = 0;
+const char *fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
 
-bool first_time = true;
-bool startup = true;
-bool reverse_flag = false;
-int16_t startup_int = 0;
-static uint32_t last_run = 0;
-
-SoftwareSerial mySerial_L(FUEL_SENSOR_PIN_L, -1);
-SoftwareSerial mySerial_R(FUEL_SENSOR_PIN_R, -1);
-
-static const float K_FACTOR_GALLONS = FLOW_PULSES_PER_L * FLOW_L_PER_GALLON;
-volatile uint32_t pulse_count = 0;
-uint32_t last_pulse_count = 0;
-float total_gallons = 0.0;
-float current_gph = 0.0;
-
-int32_t L_counter = 0;
-int32_t bytesRead_L = 0;
-uint8_t buffer_L[10];
-int32_t R_counter = 0;
-int32_t bytesRead_R = 0;
-uint8_t buffer_R[10];
-
-// --- Rolling-average smoother ---
-struct SmoothBuffer {
-    int readings[SMOOTH_BUF_SIZE];
-    int readIndex;
-    long total;
-    SmoothBuffer() : readIndex(0), total(0) { memset(readings, 0, sizeof(readings)); }
+// Fuel lookup tables
+static const CapacityEntry fuel_L_table[] = {
+    {1000, 100}, {1010, 98},  {1011, 95},  {1012, 93},  {1013, 91},  {1014, 89},  {1015, 87},  {1016, 85},
+    {1017, 83},  {1030, 81},  {1044, 79},  {1057, 76},  {1072, 74},  {1082, 72},  {1092, 70},  {1102, 68},
+    {1112, 66},  {1119, 64},  {1127, 62},  {1134, 60},  {1142, 58},  {1157, 56},  {1172, 54},  {1187, 52},
+    {1202, 50},  {1208, 48},  {1213, 46},  {1219, 44},  {1225, 42},  {1228, 39},  {1232, 37},  {1236, 35},
+    {1239, 33},  {1248, 30},  {1257, 28},  {1266, 26},  {1276, 24},  {1290, 22},  {1304, 20},  {1318, 18},
+    {1332, 16},  {1349, 14},  {1366, 12},  {1383, 10},  {1400, 8},   {1418, 6},   {1437, 4},   {1457, 2},
 };
 
-static int32_t smooth_reading(SmoothBuffer &buf, int32_t new_val) {
-    buf.total -= buf.readings[buf.readIndex];
-    buf.readings[buf.readIndex] = new_val;
-    buf.total += new_val;
-    buf.readIndex = (buf.readIndex + 1) % SMOOTH_BUF_SIZE;
-    return buf.total / SMOOTH_BUF_SIZE;
-}
-
-static SmoothBuffer smooth_L;
-static SmoothBuffer smooth_R;
-
-// --- Capacitance-to-percent lookup tables (ascending threshold, early-exit) ---
-struct CapEntry { int16_t threshold; int8_t pct; };
-
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
-
-static const CapEntry fuel_L_table[] = {
-    {1000,100},{1010, 98},{1011, 95},{1012, 93},{1013, 91},{1014, 89},{1015, 87},{1016, 85},
-    {1017, 83},{1030, 81},{1044, 79},{1057, 76},{1072, 74},{1082, 72},{1092, 70},{1102, 68},
-    {1112, 66},{1119, 64},{1127, 62},{1134, 60},{1142, 58},{1157, 56},{1172, 54},{1187, 52},
-    {1202, 50},{1208, 48},{1213, 46},{1219, 44},{1225, 42},{1228, 39},{1232, 37},{1236, 35},
-    {1239, 33},{1248, 30},{1257, 28},{1266, 26},{1276, 24},{1290, 22},{1304, 20},{1318, 18},
-    {1332, 16},{1349, 14},{1366, 12},{1383, 10},{1400,  8},{1418,  6},{1437,  4},{1457,  2},
+static const CapacityEntry fuel_R_table[] = {
+    {900, 100},  {905, 97},   {911, 95},   {916, 93},   {921, 91},   {932, 89},   {943, 87},   {952, 85},
+    {965, 83},   {975, 81},   {985, 79},   {995, 76},   {1005, 74},  {1013, 72},  {1022, 70},  {1031, 68},
+    {1040, 66},  {1048, 64},  {1056, 62},  {1064, 60},  {1073, 58},  {1082, 56},  {1090, 54},  {1099, 52},
+    {1107, 50},  {1115, 48},  {1122, 46},  {1130, 44},  {1137, 42},  {1145, 39},  {1154, 37},  {1163, 35},
+    {1172, 33},  {1178, 30},  {1185, 28},  {1191, 26},  {1198, 24},  {1209, 22},  {1219, 20},  {1229, 18},
+    {1239, 16},  {1248, 14},  {1258, 12},  {1268, 10},  {1278, 8},   {1290, 6},   {1300, 4},   {1320, 2},
 };
 
-static const CapEntry fuel_R_table[] = {
-    { 900,100},{ 905, 97},{ 911, 95},{ 916, 93},{ 921, 91},{ 932, 89},{ 943, 87},{ 952, 85},
-    { 965, 83},{ 975, 81},{ 985, 79},{ 995, 76},{1005, 74},{1013, 72},{1022, 70},{1031, 68},
-    {1040, 66},{1048, 64},{1056, 62},{1064, 60},{1073, 58},{1082, 56},{1090, 54},{1099, 52},
-    {1107, 50},{1115, 48},{1122, 46},{1130, 44},{1137, 42},{1145, 39},{1154, 37},{1163, 35},
-    {1172, 33},{1178, 30},{1185, 28},{1191, 26},{1198, 24},{1209, 22},{1219, 20},{1229, 18},
-    {1239, 16},{1248, 14},{1258, 12},{1268, 10},{1278,  8},{1290,  6},{1300,  4},{1320,  2},
-};
-
-static int32_t cap_to_pct(int32_t avg, int16_t empty_threshold,
-                           const CapEntry *table, int count) {
-    if (avg >= empty_threshold) return 0;
-    for (int i = 0; i < count; i++) {
-        if (avg < table[i].threshold) return table[i].pct;
-    }
-    return 0;
-}
-
-Arduino_DataBus *bus = new Arduino_ESP32QSPI(TFT_CS, TFT_SCK, TFT_SDA0, TFT_SDA1, TFT_SDA2, TFT_SDA3);
-Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, TFT_res_W, TFT_res_H);
-Arduino_Canvas *gfx = new Arduino_Canvas(TFT_res_W, TFT_res_H, g, 0, 0, TFT_rot);
-AXS15231B_Touch touch(Touch_SCL, Touch_SDA, Touch_INT, Touch_ADDR, TFT_rot);
+static constexpr int FUEL_L_TABLE_SIZE = sizeof(fuel_L_table) / sizeof(fuel_L_table[0]);
+static constexpr int FUEL_R_TABLE_SIZE = sizeof(fuel_R_table) / sizeof(fuel_R_table[0]);
 
 #if LV_USE_LOG != 0
-void my_print(lv_log_level_t level, const char *buf) {
-    LV_UNUSED(level);
+static void lvgl_log(lv_log_level_t level, const char *buf) {
+    (void)level;
     Serial.println(buf);
     Serial.flush();
 }
 #endif
 
-uint32_t millis_cb(void) {
+static uint32_t millis_cb(void) {
     return millis();
 }
 
-void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
+static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     uint32_t w = lv_area_get_width(area);
     uint32_t h = lv_area_get_height(area);
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
     lv_disp_flush_ready(disp);
 }
 
-void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
+static void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     uint16_t x, y;
     if (touch.touched()) {
         touch.readData(&x, &y);
@@ -135,225 +83,227 @@ void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     }
 }
 
-static void get_fuel() {
+static void get_fuel_settings() {
+    AppState &state = AppState::instance();
     prefs.begin("fuel_data", true);
-    left_val = prefs.getInt("left", 0);
-    right_val = prefs.getInt("right", 0);
+    state.fuel.left_user_setting = prefs.getInt("left", 0);
+    state.fuel.right_user_setting = prefs.getInt("right", 0);
     prefs.end();
 }
 
-static void save_fuel() {
+static void save_fuel_settings() {
+    AppState &state = AppState::instance();
     prefs.begin("fuel_data", false);
-    prefs.putInt("left", left_val);
-    prefs.putInt("right", right_val);
+    prefs.putInt("left", state.fuel.left_user_setting);
+    prefs.putInt("right", state.fuel.right_user_setting);
     prefs.end();
-    Serial.printf("Saved: Left %d, Right %d\n", left_val, right_val);
+    Serial.printf("Saved: Left %d, Right %d\n", state.fuel.left_user_setting, state.fuel.right_user_setting);
 }
 
-static void full_fuel_event_cb(lv_event_t * e) {
+static void full_fuel_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        lv_roller_set_selected(roller_left, MAX_FUEL, LV_ANIM_ON);
-        lv_roller_set_selected(roller_right, MAX_FUEL, LV_ANIM_ON);
-        left_val = MAX_FUEL;
-        right_val = MAX_FUEL;
-        save_fuel();
-        lv_screen_load(screen_gauges);
+        AppState &state = AppState::instance();
+        lv_roller_set_selected(state.ui.roller_left, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
+        lv_roller_set_selected(state.ui.roller_right, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
+        state.fuel.left_user_setting = FuelSensors::MAX_FUEL_TANKS;
+        state.fuel.right_user_setting = FuelSensors::MAX_FUEL_TANKS;
+        save_fuel_settings();
+        lv_screen_load(state.ui.screen_gauges);
     }
 }
 
-static void update_event_cb(lv_event_t * e) {
+static void update_fuel_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        left_val = lv_roller_get_selected(roller_left);
-        right_val = lv_roller_get_selected(roller_right);
-        save_fuel();
-        lv_screen_load(screen_gauges);
+        AppState &state = AppState::instance();
+        state.fuel.left_user_setting = lv_roller_get_selected(state.ui.roller_left);
+        state.fuel.right_user_setting = lv_roller_get_selected(state.ui.roller_right);
+        save_fuel_settings();
+        lv_screen_load(state.ui.screen_gauges);
     }
 }
 
-static void switch_screen_to_setup_event_cb(lv_event_t * e) {
+static void switch_to_setup_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        get_fuel();
-        lv_roller_set_selected(roller_left, left_val, LV_ANIM_OFF);
-        lv_roller_set_selected(roller_right, right_val, LV_ANIM_OFF);
-        lv_screen_load(screen_setup);
+        AppState &state = AppState::instance();
+        get_fuel_settings();
+        lv_roller_set_selected(state.ui.roller_left, state.fuel.left_user_setting, LV_ANIM_OFF);
+        lv_roller_set_selected(state.ui.roller_right, state.fuel.right_user_setting, LV_ANIM_OFF);
+        lv_screen_load(state.ui.screen_setup);
     }
 }
 
-void setup_fuel_gui() {
-    get_fuel();
+static void setup_fuel_gui() {
+    AppState &state = AppState::instance();
+    get_fuel_settings();
 
-    screen_setup = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(screen_setup, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(screen_setup, LV_OPA_COVER, LV_PART_MAIN);
+    state.ui.screen_setup = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(state.ui.screen_setup, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(state.ui.screen_setup, LV_OPA_COVER, LV_PART_MAIN);
 
-    lv_obj_t * fuel_gui_cont = lv_obj_create(screen_setup);
-    lv_obj_set_size(fuel_gui_cont, 480, 320);
-    lv_obj_center(fuel_gui_cont);
-    lv_obj_set_flex_flow(fuel_gui_cont, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(fuel_gui_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *fuel_container = lv_obj_create(state.ui.screen_setup);
+    lv_obj_set_size(fuel_container, 480, 320);
+    lv_obj_center(fuel_container);
+    lv_obj_set_flex_flow(fuel_container, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(fuel_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t * label_l = lv_label_create(fuel_gui_cont);
-    lv_label_set_text(label_l, "Fuel Left:");
+    lv_obj_t *label_l = UIUtils::create_label(fuel_container, "Fuel Left:");
+    state.ui.roller_left = lv_roller_create(fuel_container);
+    lv_roller_set_options(state.ui.roller_left, fuel_options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(state.ui.roller_left, state.fuel.left_user_setting, LV_ANIM_OFF);
+    lv_roller_set_visible_row_count(state.ui.roller_left, 3);
 
-    roller_left = lv_roller_create(fuel_gui_cont);
-    lv_roller_set_options(roller_left, fuel_options, LV_ROLLER_MODE_NORMAL);
-    lv_roller_set_selected(roller_left, left_val, LV_ANIM_OFF);
-    lv_roller_set_visible_row_count(roller_left, 3);
+    lv_obj_t *label_r = UIUtils::create_label(fuel_container, "Fuel Right:");
+    state.ui.roller_right = lv_roller_create(fuel_container);
+    lv_roller_set_options(state.ui.roller_right, fuel_options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_selected(state.ui.roller_right, state.fuel.right_user_setting, LV_ANIM_OFF);
+    lv_roller_set_visible_row_count(state.ui.roller_right, 3);
 
-    lv_obj_t * label_r = lv_label_create(fuel_gui_cont);
-    lv_label_set_text(label_r, "Fuel Right:");
+    lv_obj_t *btn_full = UIUtils::create_button_with_label(fuel_container, "Full Fuel");
+    lv_obj_add_event_cb(btn_full, full_fuel_event_cb, LV_EVENT_CLICKED, nullptr);
 
-    roller_right = lv_roller_create(fuel_gui_cont);
-    lv_roller_set_options(roller_right, fuel_options, LV_ROLLER_MODE_NORMAL);
-    lv_roller_set_selected(roller_right, right_val, LV_ANIM_OFF);
-    lv_roller_set_visible_row_count(roller_right, 3);
-
-    lv_obj_t * btn_full = lv_btn_create(fuel_gui_cont);
-    lv_obj_t * label_full = lv_label_create(btn_full);
-    lv_label_set_text(label_full, "Full Fuel");
-    lv_obj_add_event_cb(btn_full, full_fuel_event_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t * btn_update = lv_btn_create(fuel_gui_cont);
-    lv_obj_t * label_update = lv_label_create(btn_update);
-    lv_label_set_text(label_update, "Update");
-    lv_obj_add_event_cb(btn_update, update_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *btn_update = UIUtils::create_button_with_label(fuel_container, "Update");
+    lv_obj_add_event_cb(btn_update, update_fuel_event_cb, LV_EVENT_CLICKED, nullptr);
 }
 
-static void read_tank_sensor(SoftwareSerial &serial, uint8_t *buf,
-                              int32_t &counter, int32_t &bytes_read,
-                              int32_t &fuel_value, SmoothBuffer &smoother,
-                              int16_t full_cap, int16_t empty_cap,
-                              int16_t empty_threshold,
-                              const CapEntry *table, int table_count,
-                              const char *side) {
+static void read_tank_sensor(SoftwareSerial &serial,
+                            SerialBuffer &buffer,
+                            int32_t &fuel_value,
+                            SmoothingBuffer *smoother,
+                            int16_t full_cap,
+                            int16_t empty_cap,
+                            int16_t empty_threshold,
+                            const CapacityEntry *table,
+                            int table_count,
+                            const char *side) {
     if (serial.available() < 2) return;
-    counter++;
-    memset(buf, 0, 10);
-    bytes_read = serial.readBytesUntil('\n', buf, 10);
-    if (bytes_read < 2) return;
 
-    fuel_value = (buf[0] | buf[1] << 8);
-    if (fuel_value < full_cap)  fuel_value = full_cap;
+    buffer.counter++;
+    memset(buffer.data, 0, 10);
+    buffer.bytes_read = serial.readBytesUntil('\n', buffer.data, 10);
+    if (buffer.bytes_read < 2) return;
+
+    fuel_value = (buffer.data[0] | (buffer.data[1] << 8));
+    if (fuel_value < full_cap) fuel_value = full_cap;
     if (fuel_value > empty_cap) fuel_value = empty_cap;
 
-    Serial.printf("%s counter: %" PRId32 " bytesRead: %" PRId32 " buffer: ",
-                  side, counter, bytes_read);
-    for (int i = 0; i < 10 && buf[i] != 0; i++) {
-        Serial.print(buf[i], HEX); Serial.print(" ");
+    Serial.printf("%s counter: %" PRId32 " bytesRead: %" PRId32 " buffer: ", side, buffer.counter, buffer.bytes_read);
+    for (int i = 0; i < 10 && buffer.data[i] != 0; i++) {
+        Serial.print(buffer.data[i], HEX);
+        Serial.print(" ");
     }
-    Serial.printf(" Raw Bytes: %02X %02X Decoded: %" PRId32, buf[0], buf[1], fuel_value);
+    Serial.printf(" Raw Bytes: %02X %02X Decoded: %" PRId32, buffer.data[0], buffer.data[1], fuel_value);
 
-    int32_t avg = smooth_reading(smoother, fuel_value);
+    int32_t avg = smoother->add_reading(fuel_value);
     Serial.printf("  Raw smoothed %s: %" PRId32, side, avg);
 
-    fuel_value = cap_to_pct(avg, empty_threshold, table, table_count);
+    fuel_value = SensorUtils::capacity_to_percentage(avg, empty_threshold, table, table_count);
     Serial.printf(" Converted: %" PRId32 "\n", fuel_value);
 
     while (serial.available() > 0) serial.read();
 }
 
-static void fuel_sensors_timer_cb(lv_timer_t * timer1) {
-    LV_UNUSED(timer1);
-    read_tank_sensor(mySerial_L, buffer_L, L_counter, bytesRead_L, Fuel_L_value, smooth_L,
-                     FUEL_L_CAP_FULL, FUEL_L_CAP_EMPTY, FUEL_L_EMPTY_THRESH,
-                     fuel_L_table, ARRAY_SIZE(fuel_L_table), "Left");
-    read_tank_sensor(mySerial_R, buffer_R, R_counter, bytesRead_R, Fuel_R_value, smooth_R,
-                     FUEL_R_CAP_FULL, FUEL_R_CAP_EMPTY, FUEL_R_EMPTY_THRESH,
-                     fuel_R_table, ARRAY_SIZE(fuel_R_table), "Right");
+static void fuel_sensors_timer_cb(lv_timer_t *) {
+    AppState &state = AppState::instance();
+    read_tank_sensor(serial_fuel_left, state.serial_left, Fuel_L_value, state.fuel.smooth_left,
+                    FuelSensors::LEFT_CAP_FULL, FuelSensors::LEFT_CAP_EMPTY, FuelSensors::LEFT_EMPTY_THRESH,
+                    fuel_L_table, FUEL_L_TABLE_SIZE, "Left");
+    read_tank_sensor(serial_fuel_right, state.serial_right, Fuel_R_value, state.fuel.smooth_right,
+                    FuelSensors::RIGHT_CAP_FULL, FuelSensors::RIGHT_CAP_EMPTY, FuelSensors::RIGHT_EMPTY_THRESH,
+                    fuel_R_table, FUEL_R_TABLE_SIZE, "Right");
 }
 
-static int32_t read_clamp_adc(int channel, int16_t lo, int16_t hi, float scale) {
-    int32_t val = ad7830.readADCsingle(channel);
-    if (val < lo) val = lo;
-    if (val > hi) val = hi;
-    return (int32_t)round(val * scale);
-}
+static void trim_flap_sensors_timer_cb(lv_timer_t *) {
+    AppState &state = AppState::instance();
 
-static void trim_flap_sensors_timer_cb(lv_timer_t * timer2) {
-    LV_UNUSED(timer2);
-
-    Flaps_position_value = ad7830.readADCsingle(ADC_CH_FLAPS);
-    if (Flaps_position_value < FLAPS_ADC_HI) Flaps_position_value = FLAPS_ADC_HI;
-    if (Flaps_position_value > FLAPS_ADC_LO) Flaps_position_value = FLAPS_ADC_LO;
-    Flaps_position_value = (int32_t)round(Flaps_position_value * FLAPS_ADC_SCALE);
+    Flaps_position_value = ad7830.readADCsingle(ADC::CH_FLAPS);
+    Flaps_position_value = SensorUtils::read_and_clamp_adc(Flaps_position_value, ADC::FLAPS_LO, ADC::FLAPS_HI, ADC::FLAPS_SCALE);
     Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
-    ailer_trim_value = read_clamp_adc(ADC_CH_AILER, TRIM_ADC_LO, TRIM_ADC_HI, TRIM_ADC_SCALE);
+    ailer_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_AILERON),
+                                                       ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
     Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
-    elev_trim_value = read_clamp_adc(ADC_CH_ELEV, TRIM_ADC_LO, TRIM_ADC_HI, TRIM_ADC_SCALE);
+    elev_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_ELEVATOR),
+                                                      ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
     Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 }
 
-void IRAM_ATTR pulse_isr() {
-    pulse_count++;
+static void IRAM_ATTR pulse_isr() {
+    AppState::instance().flow.pulse_count++;
 }
 
-void flow_sensor_timer_cb(lv_timer_t * timer3) {
-    LV_UNUSED(timer3);
+static void flow_sensor_timer_cb(lv_timer_t *) {
+    AppState &state = AppState::instance();
+    uint32_t current_pulses = state.flow.pulse_count;
+    uint32_t pulses_in_interval = current_pulses - state.flow.last_pulse_count;
+    state.flow.last_pulse_count = current_pulses;
 
-    uint32_t current_pulses = pulse_count;
-    uint32_t pulses_in_interval = current_pulses - last_pulse_count;
-    last_pulse_count = current_pulses;
+    float k_factor = FlowSensor::PULSES_PER_LITER * FlowSensor::LITERS_PER_GALLON;
+    state.flow.current_gph = ((float)pulses_in_interval / k_factor) * 3600.0f;
+    state.flow.total_gallons += (float)pulses_in_interval / k_factor;
+    flow_value = state.flow.current_gph;
 
-    current_gph = ((float)pulses_in_interval / K_FACTOR_GALLONS) * 3600.0;
-    total_gallons += (float)pulses_in_interval / K_FACTOR_GALLONS;
-
-    flow_value = current_gph;
-
-    Serial.print("Flow Rate: "); Serial.print(current_gph);
-    Serial.print(" GPH, Pulses in Interval: "); Serial.print(pulses_in_interval);
-    Serial.print("\tTotal: "); Serial.print(total_gallons); Serial.println(" Gallons");
+    Serial.print("Flow Rate: ");
+    Serial.print(state.flow.current_gph);
+    Serial.print(" GPH, Pulses in Interval: ");
+    Serial.print(pulses_in_interval);
+    Serial.print("\tTotal: ");
+    Serial.print(state.flow.total_gallons);
+    Serial.println(" Gallons");
 }
 
 void setup() {
-    delay(5000);
+    delay(Startup::SERIAL_WAIT_MS);
 #ifdef ARDUINO_USB_CDC_ON_BOOT
-    delay(2000);
+    delay(Startup::USB_CDC_WAIT_MS);
 #endif
 
-    Serial.begin(115200);
+    Serial.begin(Startup::SERIAL_BAUD);
     Serial.println("Start receiving TTL to serial feeds\n");
-    mySerial_L.begin(FUEL_SENSOR_BAUD);
-    mySerial_R.begin(FUEL_SENSOR_BAUD);
+    serial_fuel_left.begin(FuelSensors::BAUD);
+    serial_fuel_right.begin(FuelSensors::BAUD);
 
-    Wire1.begin(ADS_SDA, ADS_SCL, ADS_I2C_FREQ);
+    Wire1.begin(ADC::SDA, ADC::SCL, ADC::I2C_FREQ);
     Serial.println("Adafruit ADS7830 start\n");
-    if (!ad7830.begin(ADS_I2C_ADDR, &Wire1)) {
+    if (!ad7830.begin(ADC::I2C_ADDR, &Wire1)) {
         Serial.println("Failed to initialize ADS7830!\n");
         while (1);
     }
 
     Serial.println("Arduino_GFX LVGL ");
-    String LVGL_Arduino = String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch() + " example";
-    Serial.println(LVGL_Arduino);
+    String lvgl_version = String('V') + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch() + " example";
+    Serial.println(lvgl_version);
 
-    if (!gfx->begin(40000000UL)) {
+    if (!gfx->begin(Display::SPI_SPEED)) {
         Serial.println("Failed to initialize display!");
         return;
     }
     gfx->fillScreen(BLACK);
 
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);
+    pinMode(TFT::BL_PIN, OUTPUT);
+    digitalWrite(TFT::BL_PIN, HIGH);
 
     if (!touch.begin()) {
         Serial.println("Failed to initialize touch module!");
         return;
     }
     touch.enOffsetCorrection(true);
-    touch.setOffsets(Touch_X_min, Touch_X_max, TFT_res_W-1, Touch_Y_min, Touch_Y_max, TFT_res_H-1);
+    touch.setOffsets(Touch::X_MIN, Touch::X_MAX, Display::WIDTH - 1, Touch::Y_MIN, Touch::Y_MAX, Display::HEIGHT - 1);
+
+    AppState &state = AppState::instance();
+    state.fuel.smooth_left = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
+    state.fuel.smooth_right = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
 
     lv_init();
     lv_tick_set_cb(millis_cb);
 
 #if LV_USE_LOG != 0
-    lv_log_register_print_cb(my_print);
+    lv_log_register_print_cb(lvgl_log);
 #endif
 
-    uint32_t screenWidth  = gfx->width();
+    uint32_t screenWidth = gfx->width();
     uint32_t screenHeight = gfx->height();
-    uint32_t bufSize = screenWidth * screenHeight / 10;
+    uint32_t bufSize = screenWidth * screenHeight / Startup::LVGL_BUFFER_DIVISOR;
     lv_color_t *disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!disp_draw_buf) {
         Serial.println("LVGL failed to allocate display buffer!");
@@ -362,63 +312,63 @@ void setup() {
 
     lv_display_t *disp = lv_display_create(screenWidth, screenHeight);
     lv_display_set_flush_cb(disp, my_disp_flush);
-    lv_display_set_buffers(disp, disp_draw_buf, NULL, bufSize * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_buffers(disp, disp_draw_buf, nullptr, bufSize * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, my_touchpad_read);
 
-    screen_gauges = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(screen_gauges, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
+    state.ui.screen_gauges = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_color(state.ui.screen_gauges, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(state.ui.screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
 
-    lv_obj_t * btn2 = lv_button_create(screen_gauges);
-    lv_obj_align(btn2, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_t * label2 = lv_label_create(btn2);
-    lv_label_set_text(label2, "Setup");
-    lv_obj_add_event_cb(btn2, switch_screen_to_setup_event_cb, LV_EVENT_CLICKED, screen_gauges);
+    lv_obj_t *btn_setup = UIUtils::create_button_with_label(state.ui.screen_gauges, "Setup");
+    lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, state.ui.screen_gauges);
 
-    pinMode(FLOW_SENSOR_PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), pulse_isr, FALLING);
+    pinMode(FlowSensor::PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, FALLING);
 
-    fuel_gaugeL(TIMER_GAUGE_FUEL_MS);
-    fuel_gaugeR(TIMER_GAUGE_FUEL_MS);
-    flaps_gauge(TIMER_GAUGE_FLAPS_MS);
-    trim_gauge(TIMER_GAUGE_TRIM_MS);
-    flow_gauge(TIMER_GAUGE_FLOW_MS);
+    fuel_gaugeL(Timers::GAUGE_FUEL_MS);
+    fuel_gaugeR(Timers::GAUGE_FUEL_MS);
+    flaps_gauge(Timers::GAUGE_FLAPS_MS);
+    trim_gauge(Timers::GAUGE_TRIM_MS);
+    flow_gauge(Timers::GAUGE_FLOW_MS);
 
     setup_fuel_gui();
-    lv_screen_load(screen_gauges);
+    lv_screen_load(state.ui.screen_gauges);
 }
 
 void loop() {
-    if (startup) {
+    AppState &state = AppState::instance();
+
+    if (state.startup.active) {
         delay(200);
-        if (lv_tick_get() - last_run >= STARTUP_ANIM_INTERVAL) {
-            last_run += STARTUP_ANIM_INTERVAL;
-            Serial.println(startup_int);
-            Fuel_L_value         = startup_int * 5;
-            Fuel_R_value         = startup_int * 5;
-            Flaps_position_value = startup_int;
-            ailer_trim_value     = startup_int * 5;
-            elev_trim_value      = startup_int * 5;
-            if (!reverse_flag && startup_int <= 20) {
-                startup_int++;
+        if (lv_tick_get() - state.startup.last_run >= Timers::STARTUP_ANIM_INTERVAL_MS) {
+            state.startup.last_run += Timers::STARTUP_ANIM_INTERVAL_MS;
+            Serial.println(state.startup.value);
+            Fuel_L_value = state.startup.value * 5;
+            Fuel_R_value = state.startup.value * 5;
+            Flaps_position_value = state.startup.value;
+            ailer_trim_value = state.startup.value * 5;
+            elev_trim_value = state.startup.value * 5;
+            if (!state.startup.reverse && state.startup.value <= 20) {
+                state.startup.value++;
             } else {
-                reverse_flag = true;
-                startup_int--;
+                state.startup.reverse = true;
+                state.startup.value--;
             }
-            if (startup_int < 0) startup = false;
+            if (state.startup.value < 0) state.startup.active = false;
         }
     }
 
-    if (first_time && !startup) {
-        first_time = false;
-        lv_timer_create(fuel_sensors_timer_cb,      TIMER_FUEL_SENSOR_MS, NULL);
-        lv_timer_create(trim_flap_sensors_timer_cb, TIMER_TRIM_FLAP_MS,   NULL);
-        lv_timer_create(flow_sensor_timer_cb,        TIMER_FLOW_SENSOR_MS, NULL);
+    if (state.ui.first_initialization && !state.startup.active) {
+        state.ui.first_initialization = false;
+        lv_timer_create(fuel_sensors_timer_cb, Timers::FUEL_SENSOR_MS, nullptr);
+        lv_timer_create(trim_flap_sensors_timer_cb, Timers::TRIM_FLAP_SENSOR_MS, nullptr);
+        lv_timer_create(flow_sensor_timer_cb, Timers::FLOW_SENSOR_MS, nullptr);
     }
 
-    lv_timer_handler_run_in_period(5);
+    lv_timer_handler_run_in_period(Timers::LVGL_HANDLER_PERIOD_MS);
     gfx->flush();
 }

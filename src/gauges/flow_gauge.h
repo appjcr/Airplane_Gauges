@@ -1,40 +1,14 @@
-/**
- * @file flow_gauge.h
- *
- */
+#pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <lvgl.h>
+#include <cstdint>
 
-/*********************
- *      INCLUDES
- *********************/
-
-/*********************
- *      DEFINES
- *********************/
-
-/**********************
- *      TYPEDEFS
- **********************/
-extern lv_obj_t * screen_gauges;
+extern lv_obj_t *screen_gauges;
 extern float flow_value;
 extern float remain_value;
 extern float flow_used_value;
 extern int32_t time_to_empty_hours_value;
 extern int32_t time_to_empty_minutes_value;
 
-/**********************
- * GLOBAL PROTOTYPES
- **********************/
 void flow_gauge(int gauge_timer_value);
-
-/**********************
- *      MACROS
- **********************/
-
-#ifdef __cplusplus
-} /*extern "C"*/
-#endif
 
