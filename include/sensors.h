@@ -34,7 +34,7 @@ struct ADCRange {
 // ── Flow Sensor ───────────────────────────────────────
 struct FlowMetrics {
     float current_gph;
-    float total_gallons;
+    float total_gallons_used;
     uint32_t pulse_count;
 };
 

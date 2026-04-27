@@ -25,13 +25,16 @@ struct ADCSystem {
 // ── Flow System State ─────────────────────────────────
 struct FlowSystem {
     float current_gph;
-    float total_gallons;
+    float total_gallons_used;
+    uint32_t avg_gph_sample_count = 0;
     float remaining;
     float used;
     int32_t time_to_empty_hours;
     int32_t time_to_empty_minutes;
     uint32_t pulse_count;
     uint32_t last_pulse_count;
+    uint32_t last_pulse_time_ms = 0;
+    SmoothingBuffer *smooth_flow = nullptr;
 };
 
 // ── Serial Buffer State ───────────────────────────────

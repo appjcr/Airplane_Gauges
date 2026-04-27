@@ -4,8 +4,6 @@
 #include <Adafruit_ADS7830.h>
 #include <lvgl.h>
 #include <Arduino_GFX_Library.h>
-#include <Preferences.h>
-
 #include "hardware_config.h"
 #include "sensors.h"
 #include "sensor_utils.h"
@@ -17,6 +15,7 @@
 #include "flaps_gauge.h"
 #include "trim_gauge.h"
 #include "flow_gauge.h"
+#include "fuel_setup.h"
 
 // Global instances
 Adafruit_ADS7830 ad7830;
@@ -26,9 +25,6 @@ AXS15231B_Touch touch(Touch::SCL, Touch::SDA, Touch::INT, Touch::ADDR, Display::
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(SPII::CS, SPII::SCK, SPII::SDA0, SPII::SDA1, SPII::SDA2, SPII::SDA3);
 Arduino_GFX *g = new Arduino_AXS15231B(bus, GFX_NOT_DEFINED, 0, false, Display::WIDTH, Display::HEIGHT);
 Arduino_Canvas *gfx = new Arduino_Canvas(Display::WIDTH, Display::HEIGHT, g, 0, 0, Display::ROTATION);
-
-Preferences prefs;
-const char *fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
 
 // Fuel lookup tables
 static const CapacityEntry fuel_L_table[] = {
@@ -81,88 +77,6 @@ static void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data) {
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
-}
-
-static void get_fuel_settings() {
-    AppState &state = AppState::instance();
-    prefs.begin("fuel_data", true);
-    state.fuel.left_user_setting = prefs.getInt("left", 0);
-    state.fuel.right_user_setting = prefs.getInt("right", 0);
-    prefs.end();
-}
-
-static void save_fuel_settings() {
-    AppState &state = AppState::instance();
-    prefs.begin("fuel_data", false);
-    prefs.putInt("left", state.fuel.left_user_setting);
-    prefs.putInt("right", state.fuel.right_user_setting);
-    prefs.end();
-    Serial.printf("Saved: Left %d, Right %d\n", state.fuel.left_user_setting, state.fuel.right_user_setting);
-}
-
-static void full_fuel_event_cb(lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        AppState &state = AppState::instance();
-        lv_roller_set_selected(state.ui.roller_left, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
-        lv_roller_set_selected(state.ui.roller_right, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
-        state.fuel.left_user_setting = FuelSensors::MAX_FUEL_TANKS;
-        state.fuel.right_user_setting = FuelSensors::MAX_FUEL_TANKS;
-        save_fuel_settings();
-        lv_screen_load(state.ui.screen_gauges);
-    }
-}
-
-static void update_fuel_event_cb(lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        AppState &state = AppState::instance();
-        state.fuel.left_user_setting = lv_roller_get_selected(state.ui.roller_left);
-        state.fuel.right_user_setting = lv_roller_get_selected(state.ui.roller_right);
-        save_fuel_settings();
-        lv_screen_load(state.ui.screen_gauges);
-    }
-}
-
-static void switch_to_setup_event_cb(lv_event_t *e) {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        AppState &state = AppState::instance();
-        get_fuel_settings();
-        lv_roller_set_selected(state.ui.roller_left, state.fuel.left_user_setting, LV_ANIM_OFF);
-        lv_roller_set_selected(state.ui.roller_right, state.fuel.right_user_setting, LV_ANIM_OFF);
-        lv_screen_load(state.ui.screen_setup);
-    }
-}
-
-static void setup_fuel_gui() {
-    AppState &state = AppState::instance();
-    get_fuel_settings();
-
-    state.ui.screen_setup = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(state.ui.screen_setup, lv_palette_main(LV_PALETTE_NONE), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(state.ui.screen_setup, LV_OPA_COVER, LV_PART_MAIN);
-
-    lv_obj_t *fuel_container = lv_obj_create(state.ui.screen_setup);
-    lv_obj_set_size(fuel_container, 480, 320);
-    lv_obj_center(fuel_container);
-    lv_obj_set_flex_flow(fuel_container, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(fuel_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *label_l = UIUtils::create_label(fuel_container, "Fuel Left:");
-    state.ui.roller_left = lv_roller_create(fuel_container);
-    lv_roller_set_options(state.ui.roller_left, fuel_options, LV_ROLLER_MODE_NORMAL);
-    lv_roller_set_selected(state.ui.roller_left, state.fuel.left_user_setting, LV_ANIM_OFF);
-    lv_roller_set_visible_row_count(state.ui.roller_left, 3);
-
-    lv_obj_t *label_r = UIUtils::create_label(fuel_container, "Fuel Right:");
-    state.ui.roller_right = lv_roller_create(fuel_container);
-    lv_roller_set_options(state.ui.roller_right, fuel_options, LV_ROLLER_MODE_NORMAL);
-    lv_roller_set_selected(state.ui.roller_right, state.fuel.right_user_setting, LV_ANIM_OFF);
-    lv_roller_set_visible_row_count(state.ui.roller_right, 3);
-
-    lv_obj_t *btn_full = UIUtils::create_button_with_label(fuel_container, "Full Fuel");
-    lv_obj_add_event_cb(btn_full, full_fuel_event_cb, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t *btn_update = UIUtils::create_button_with_label(fuel_container, "Update");
-    lv_obj_add_event_cb(btn_update, update_fuel_event_cb, LV_EVENT_CLICKED, nullptr);
 }
 
 static void read_tank_sensor(SoftwareSerial &serial,
@@ -229,7 +143,9 @@ static void trim_flap_sensors_timer_cb(lv_timer_t *) {
 }
 
 static void IRAM_ATTR pulse_isr() {
-    AppState::instance().flow.pulse_count++;
+    AppState &state = AppState::instance();
+    state.flow.pulse_count++;
+    state.flow.last_pulse_time_ms = millis();
 }
 
 static void flow_sensor_timer_cb(lv_timer_t *) {
@@ -239,17 +155,46 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     state.flow.last_pulse_count = current_pulses;
 
     float k_factor = FlowSensor::PULSES_PER_LITER * FlowSensor::LITERS_PER_GALLON;
-    state.flow.current_gph = ((float)pulses_in_interval / k_factor) * 3600.0f;
-    state.flow.total_gallons += (float)pulses_in_interval / k_factor;
-    flow_value = state.flow.current_gph;
+    float raw_gph = ((float)pulses_in_interval / k_factor) * 3600.0f;
 
-    Serial.print("Flow Rate: ");
-    Serial.print(state.flow.current_gph);
-    Serial.print(" GPH, Pulses in Interval: ");
-    Serial.print(pulses_in_interval);
-    Serial.print("\tTotal: ");
-    Serial.print(state.flow.total_gallons);
-    Serial.println(" Gallons");
+    bool pulse_fresh = (millis() - state.flow.last_pulse_time_ms) < FlowSensor::STALE_TIMEOUT_MS;
+
+    if (pulse_fresh && raw_gph >= FlowSensor::MIN_GPH) {
+        state.flow.total_gallons_used += (float)pulses_in_interval / k_factor;
+
+        int32_t smoothed_scaled = state.flow.smooth_flow->add_reading((int32_t)(raw_gph * 100.0f));
+        state.flow.current_gph = (float)smoothed_scaled / 100.0f;
+        flow_value = state.flow.current_gph;
+
+        state.flow.avg_gph_sample_count++;
+        avg_gph_value += (state.flow.current_gph - avg_gph_value) / (float)state.flow.avg_gph_sample_count;
+
+        float initial_fuel = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
+        flow_used_value = state.flow.total_gallons_used;
+        remain_value = initial_fuel - flow_used_value;
+        if (remain_value < 0.0f) remain_value = 0.0f;
+
+        if (state.flow.current_gph > 0.0f) {
+            float hours = remain_value / state.flow.current_gph;
+            time_to_empty_hours_value = (int32_t)hours;
+            time_to_empty_minutes_value = (int32_t)((hours - (float)time_to_empty_hours_value) * 60.0f);
+        }
+    } else {
+        state.flow.current_gph = 0.0f;
+        flow_value = 0.0f;
+        time_to_empty_hours_value = 0;
+        time_to_empty_minutes_value = 0;
+    }
+
+    static uint32_t save_ticks = 0;
+    if (++save_ticks >= 60) {
+        save_ticks = 0;
+        save_flow_totals();
+    }
+
+    Serial.printf("Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d\n",
+                 flow_value, flow_used_value, remain_value,
+                 (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
 }
 
 void setup() {
@@ -311,7 +256,7 @@ void setup() {
     lv_obj_set_style_bg_opa(state.ui.screen_gauges, LV_OPA_COVER, LV_PART_MAIN);
 
     lv_obj_t *btn_setup = UIUtils::create_button_with_label(state.ui.screen_gauges, "Setup");
-    lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 2);
     lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, state.ui.screen_gauges);
 
     Serial.println("Start receiving TTL to serial feeds\n");
@@ -327,18 +272,21 @@ void setup() {
 
     state.fuel.smooth_left = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
     state.fuel.smooth_right = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
+    state.flow.smooth_flow = new SmoothingBuffer(FlowSensor::SMOOTH_BUFFER_SIZE);
 
     pinMode(FlowSensor::PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, FALLING);
+
+    load_flow_totals();
 
     fuel_gaugeL(Timers::GAUGE_FUEL_MS);
     fuel_gaugeR(Timers::GAUGE_FUEL_MS);
     flaps_gauge(Timers::GAUGE_FLAPS_MS);
     trim_gauge(Timers::GAUGE_TRIM_MS);
     flow_gauge(Timers::GAUGE_FLOW_MS);
-
+    
     setup_fuel_gui();
-
+    
     lv_screen_load(state.ui.screen_gauges);
 }
 
