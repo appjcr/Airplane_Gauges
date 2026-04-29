@@ -154,12 +154,12 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     uint32_t pulses_in_interval = current_pulses - state.flow.last_pulse_count;
     state.flow.last_pulse_count = current_pulses;
 
-    float k_factor = FlowSensor::PULSES_PER_LITER * FlowSensor::LITERS_PER_GALLON;
+    float k_factor = FlowSensor::PULSES_PER_GALLON;
     float raw_gph = ((float)pulses_in_interval / k_factor) * 3600.0f;
 
     bool pulse_fresh = (millis() - state.flow.last_pulse_time_ms) < FlowSensor::STALE_TIMEOUT_MS;
 
-    if (pulse_fresh && raw_gph >= FlowSensor::MIN_GPH) {
+    if (pulse_fresh && raw_gph >= FlowSensor::MIN_GPH && raw_gph <= FlowSensor::MAX_GPH) {
         state.flow.total_gallons_used += (float)pulses_in_interval / k_factor;
 
         int32_t smoothed_scaled = state.flow.smooth_flow->add_reading((int32_t)(raw_gph * 100.0f));
@@ -192,9 +192,9 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
         save_flow_totals();
     }
 
-    Serial.printf("Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d\n",
+    Serial.printf("Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulse count: %u\n",
                  flow_value, flow_used_value, remain_value,
-                 (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
+                 (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value, avg_gph_value, state.flow.pulse_count);
 }
 
 void setup() {
@@ -278,6 +278,7 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, FALLING);
 
     load_flow_totals();
+    state.flow.last_pulse_count = state.flow.pulse_count;
 
     fuel_gaugeL(Timers::GAUGE_FUEL_MS);
     fuel_gaugeR(Timers::GAUGE_FUEL_MS);

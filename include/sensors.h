@@ -57,6 +57,7 @@ public:
     explicit SmoothingBuffer(int size);
     ~SmoothingBuffer();
     int32_t add_reading(int32_t value);
+    void fill(int32_t value);
     void reset();
 
 private:

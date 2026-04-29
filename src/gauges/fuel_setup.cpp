@@ -48,6 +48,9 @@ void load_flow_totals() {
     Serial.printf("Loaded total gallons: %.3f  avg gph: %.2f  samples: %u\n",
                   state.flow.total_gallons_used, avg_gph_value, state.flow.avg_gph_sample_count);
 
+    if (state.flow.smooth_flow && avg_gph_value > 0.0f)
+        state.flow.smooth_flow->fill((int32_t)(avg_gph_value * 100.0f));
+
     get_fuel_settings();
     flow_used_value = state.flow.total_gallons_used;
     remain_value = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting) - flow_used_value;
@@ -96,7 +99,9 @@ static void clear_avg_gph_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         AppState &state = AppState::instance();
         state.flow.avg_gph_sample_count = 0;
+        state.flow.last_pulse_count = state.flow.pulse_count;
         avg_gph_value = 0.0f;
+        if (state.flow.smooth_flow) state.flow.smooth_flow->reset();
         save_flow_totals();
     }
 }

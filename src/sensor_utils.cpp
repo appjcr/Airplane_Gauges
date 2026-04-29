@@ -37,7 +37,7 @@ void calculate_flow_metrics(uint32_t current_pulses,
                            float &gph_out,
                            float &gallons_out) {
     uint32_t pulses_in_interval = current_pulses - last_pulses;
-    float k_factor = FlowSensor::PULSES_PER_LITER * FlowSensor::LITERS_PER_GALLON;
+    float k_factor = FlowSensor::PULSES_PER_GALLON;
     gph_out = ((float)pulses_in_interval / k_factor) * 3600.0f;
     gallons_out += (float)pulses_in_interval / k_factor;
 }

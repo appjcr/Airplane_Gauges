@@ -86,10 +86,10 @@ namespace FuelSensors {
 // ── Fuel Flow Sensor ──────────────────────────────────
 namespace FlowSensor {
     constexpr uint8_t PIN = 7;
-    constexpr float PULSES_PER_LITER = 4380.0f;
-    constexpr float LITERS_PER_GALLON = 3.78541f;
-    constexpr int SMOOTH_BUFFER_SIZE = 10;
+    constexpr float PULSES_PER_GALLON = 1203.0f;
+    constexpr int SMOOTH_BUFFER_SIZE = 15;
     constexpr float MIN_GPH = 0.01f;
+    constexpr float MAX_GPH = 10.0f;
     constexpr uint32_t STALE_TIMEOUT_MS = 2000;
 }
 
