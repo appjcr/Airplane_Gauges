@@ -100,18 +100,18 @@ static void read_tank_sensor(SoftwareSerial &serial,
     if (fuel_value < full_cap) fuel_value = full_cap;
     if (fuel_value > empty_cap) fuel_value = empty_cap;
 
-    Serial.printf("%s counter: %" PRId32 " bytesRead: %" PRId32 " buffer: ", side, buffer.counter, buffer.bytes_read);
-    for (int i = 0; i < 10 && buffer.data[i] != 0; i++) {
-        Serial.print(buffer.data[i], HEX);
-        Serial.print(" ");
-    }
-    Serial.printf(" Raw Bytes: %02X %02X Decoded: %" PRId32, buffer.data[0], buffer.data[1], fuel_value);
+    //Serial.printf("%s counter: %" PRId32 " bytesRead: %" PRId32 " buffer: ", side, buffer.counter, buffer.bytes_read);
+    //for (int i = 0; i < 10 && buffer.data[i] != 0; i++) {
+    //    Serial.print(buffer.data[i], HEX);
+    //    Serial.print(" ");
+    //}
+    //Serial.printf(" Raw Bytes: %02X %02X Decoded: %" PRId32, buffer.data[0], buffer.data[1], fuel_value);
 
     int32_t avg = smoother->add_reading(fuel_value);
-    Serial.printf("  Raw smoothed %s: %" PRId32, side, avg);
+    //Serial.printf("  Raw smoothed %s: %" PRId32, side, avg);
 
     fuel_value = SensorUtils::capacity_to_percentage(avg, empty_threshold, table, table_count);
-    Serial.printf(" Converted: %" PRId32 "\n", fuel_value);
+    //Serial.printf(" Converted: %" PRId32 "\n", fuel_value);
 
     while (serial.available() > 0) serial.read();
 }
@@ -131,15 +131,15 @@ static void trim_flap_sensors_timer_cb(lv_timer_t *) {
 
     Flaps_position_value = ad7830.readADCsingle(ADC::CH_FLAPS);
     Flaps_position_value = SensorUtils::read_and_clamp_adc(Flaps_position_value, ADC::FLAPS_LO, ADC::FLAPS_HI, ADC::FLAPS_SCALE);
-    Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
+    //Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
     ailer_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_AILERON),
                                                        ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
-    Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
+    //Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
     elev_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_ELEVATOR),
                                                       ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
-    Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
+    //Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 }
 
 static void IRAM_ATTR pulse_isr() {
@@ -155,7 +155,8 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     state.flow.last_pulse_count = current_pulses;
 
     float k_factor = FlowSensor::PULSES_PER_GALLON;
-    float raw_gph = ((float)pulses_in_interval / k_factor) * 3600.0f;
+    float interval_sec = (float)Timers::FLOW_SENSOR_MS / 1000.0f;
+    float raw_gph = ((float)pulses_in_interval / k_factor) / interval_sec * 3600.0f;
 
     bool pulse_fresh = (millis() - state.flow.last_pulse_time_ms) < FlowSensor::STALE_TIMEOUT_MS;
 
@@ -167,7 +168,7 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
         flow_value = state.flow.current_gph;
 
         state.flow.avg_gph_sample_count++;
-        avg_gph_value += (state.flow.current_gph - avg_gph_value) / (float)state.flow.avg_gph_sample_count;
+        avg_gph_value += (raw_gph - avg_gph_value) / (float)state.flow.avg_gph_sample_count;
 
         float initial_fuel = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
         flow_used_value = state.flow.total_gallons_used;
@@ -187,13 +188,13 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     }
 
     static uint32_t save_ticks = 0;
-    if (++save_ticks >= 60) {
+    if (++save_ticks >= 2) {
         save_ticks = 0;
         save_flow_totals();
     }
 
-    Serial.printf("Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulse count: %u\n",
-                 flow_value, flow_used_value, remain_value,
+    Serial.printf("Save ticks: %u Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulse count: %u\n",
+                 save_ticks, flow_value, flow_used_value, remain_value,
                  (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value, avg_gph_value, state.flow.pulse_count);
 }
 
