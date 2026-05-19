@@ -129,14 +129,19 @@ static void fuel_sensors_timer_cb(lv_timer_t *) {
 static void trim_flap_sensors_timer_cb(lv_timer_t *) {
     AppState &state = AppState::instance();
 
-    Flaps_position_value = ad7830.readADCsingle(ADC::CH_FLAPS);
-    Flaps_position_value = SensorUtils::read_and_clamp_adc(Flaps_position_value, ADC::FLAPS_LO, ADC::FLAPS_HI, ADC::FLAPS_SCALE);
+    // Read flaps and trim values from ADS7830 ADC and convert to physical units
+
+    // Flaps: 0-255 raw ADC to a value between 0 and 11
+    Flaps_position_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_FLAPS),
+                                                       ADC::FLAPS_LO, ADC::FLAPS_HI, ADC::FLAPS_SCALE);
     //Serial.printf("Flaps_position_value: %" PRId32 "\n", Flaps_position_value);
 
+    // Aileron trim: 0-255 raw ADC to a value between 0 and 100
     ailer_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_AILERON),
                                                        ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
     //Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
 
+    // Elevator trim: 0-255 raw ADC to a value between 0 and 100
     elev_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_ELEVATOR),
                                                       ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
     //Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);

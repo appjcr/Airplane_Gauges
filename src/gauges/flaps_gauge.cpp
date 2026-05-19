@@ -22,7 +22,12 @@ static void flaps_anim_timer_cb(lv_timer_t *) {
     }
 
     for (int i = 0; i < 11; i++) {
-        int32_t threshold = (i == 0) ? 1 : i * 2;
+        int32_t threshold;
+        if (i == 0) {
+            threshold = 1;
+        } else {
+            threshold = i * 2;
+        }
         if (Flaps_position_value >= threshold) {
             lv_obj_remove_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
         } else {
