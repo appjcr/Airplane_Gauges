@@ -50,14 +50,14 @@ namespace ADC {
     constexpr uint8_t CH_ELEVATOR = 2;
 
     // Flaps scaling (0-255 raw ADC to 0-20 degrees)
-    constexpr int16_t FLAPS_LO = 0;
-    constexpr int16_t FLAPS_HI = 255;
-    constexpr float FLAPS_SCALE = 0.0471f;
+    constexpr int16_t FLAPS_LO = 30;
+    constexpr int16_t FLAPS_HI = 242;
+    constexpr float FLAPS_SCALE = 0.05188f;
 
     // Trim scaling (0-255 raw ADC to 0-100 percent)
     constexpr int16_t TRIM_LO = 0;
     constexpr int16_t TRIM_HI = 255;
-    constexpr float TRIM_SCALE = 0.392f;
+    constexpr float TRIM_SCALE = 0.39215f;
 }
 
 // ── Fuel Tank Capacitance Sensors ─────────────────────
