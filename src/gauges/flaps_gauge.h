@@ -2,6 +2,8 @@
 
 #include <lvgl.h>
 #include <cstdint>
+#include <SoftwareSerial.h>
+
 
 extern lv_obj_t *screen_gauges;
 extern int32_t Flaps_position_value;

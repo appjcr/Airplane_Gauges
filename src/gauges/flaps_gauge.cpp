@@ -20,17 +20,19 @@ static void flaps_anim_timer_cb(lv_timer_t *) {
 
     int32_t inverted_flaps_position = 11 - Flaps_position_value;
 
-    lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-    if (Flaps_position_value == 0) {
-        lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-    }
+    Serial.printf("Inverted Flaps_position_value: %" PRId32 "\n", inverted_flaps_position);
 
     for (int i = 0; i <= 11; i++) {
-        if (i <= Flaps_position_value) {
-            lv_obj_remove_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
-        } else {
+        if (i >= inverted_flaps_position) {
             lv_obj_add_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
         }
+        else {
+            lv_obj_remove_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
+    if (inverted_flaps_position != 0) {
+        lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
