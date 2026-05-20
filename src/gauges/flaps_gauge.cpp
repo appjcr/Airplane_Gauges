@@ -13,22 +13,20 @@ static const char *custom_labels[] = {"20", "15", "10", "5", "0", nullptr};
 
 static void flaps_anim_timer_cb(lv_timer_t *) {
     if (old_Flaps_position_value == Flaps_position_value) return;
-
     old_Flaps_position_value = Flaps_position_value;
+
+    if (Flaps_position_value > 11) Flaps_position_value = 11;
+    if (Flaps_position_value < 0) Flaps_position_value = 0;
+
+    int32_t inverted_flaps_position = 11 - Flaps_position_value;
+
+    lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
     if (Flaps_position_value == 0) {
         lv_obj_remove_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(flaps_up_label, LV_OBJ_FLAG_HIDDEN);
     }
 
-    for (int i = 0; i < 11; i++) {
-        int32_t threshold;
-        if (i == 0) {
-            threshold = 1;
-        } else {
-            threshold = i * 2;
-        }
-        if (Flaps_position_value >= threshold) {
+    for (int i = 0; i <= 11; i++) {
+        if (i <= Flaps_position_value) {
             lv_obj_remove_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(lines[i], LV_OBJ_FLAG_HIDDEN);

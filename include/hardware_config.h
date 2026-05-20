@@ -52,7 +52,7 @@ namespace ADC {
     // Flaps scaling (0-255 raw ADC to 0-20 degrees)
     constexpr int16_t FLAPS_LO = 0;
     constexpr int16_t FLAPS_HI = 255;
-    constexpr float FLAPS_SCALE = 0.043f;
+    constexpr float FLAPS_SCALE = 0.0471f;
 
     // Trim scaling (0-255 raw ADC to 0-100 percent)
     constexpr int16_t TRIM_LO = 0;
