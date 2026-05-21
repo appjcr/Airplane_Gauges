@@ -2,6 +2,7 @@
 #include "flaps_gauge.h"
 #include "app_state.h"
 
+int32_t Flaps_position_value_raw = 0;
 int32_t Flaps_position_value = 0;
 int32_t old_Flaps_position_value = -1;
 

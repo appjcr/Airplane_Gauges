@@ -131,15 +131,15 @@ static void trim_flap_sensors_timer_cb(lv_timer_t *) {
 
     // Read flaps and trim values from ADS7830 ADC and convert to physical units
 
-    // Flaps: 0-255 raw ADC to a value between 0 and 11
-    Flaps_position_value = ad7830.readADCsingle(ADC::CH_FLAPS);
-    Serial.printf("Flaps_position_value raw: %" PRId32 "\n", Flaps_position_value);
-    
+    // Flaps: 30-242 raw ADC to a value between 0 and 11
+    Flaps_position_value_raw = ad7830.readADCsingle(ADC::CH_FLAPS);
+    Serial.printf("Flaps_position_value raw: %" PRId32 "\n", Flaps_position_value_raw);
+
     // adjust to 30 offset to zero out low value
-    Flaps_position_value = Flaps_position_value - 30;
+    Flaps_position_value = Flaps_position_value_raw - ADC::FLAPS_LO;
 
     Flaps_position_value = SensorUtils::read_and_clamp_adc(Flaps_position_value,
-                                                        (ADC::FLAPS_LO - 30), (ADC::FLAPS_HI -30), ADC::FLAPS_SCALE);
+                                        (ADC::FLAPS_LO - ADC::FLAPS_LO), (ADC::FLAPS_HI - ADC::FLAPS_LO), ADC::FLAPS_SCALE);
     Serial.printf("Flaps_position_value clamped: %" PRId32 "\n", Flaps_position_value);
 
     // Aileron trim: 0-255 raw ADC to a value between 0 and 100
