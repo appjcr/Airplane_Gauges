@@ -2,9 +2,7 @@
 #include "flaps_gauge.h"
 #include "app_state.h"
 
-int32_t Flaps_position_value_raw = 0;
-int32_t Flaps_position_value = 0;
-int32_t old_Flaps_position_value = -1;
+static int32_t old_Flaps_position_value = -1;
 
 static lv_obj_t *flaps_label = nullptr;
 static lv_obj_t *flaps_up_label = nullptr;
@@ -13,10 +11,12 @@ static lv_obj_t *lines[11] = {nullptr};
 static const char *custom_labels[] = {"20", "15", "10", "5", "0", nullptr};
 
 static void flaps_anim_timer_cb(lv_timer_t *) {
-    // Clamp into a local. Writing back to the global would fight the sensor callback
-    // that owns it, and comparing the unclamped value against a clamped old_ would
-    // re-render every tick forever once the ADC read outside 0..11.
-    int32_t position = Flaps_position_value;
+    AppState &state = AppState::instance();
+    // Clamp into a local. Writing the clamp back to state.adc.flaps_position would
+    // fight the sensor callback that owns it, and comparing the unclamped value
+    // against a clamped old_ would re-render every tick once the ADC read outside
+    // 0..11.
+    int32_t position = state.adc.flaps_position;
     if (position > 11) position = 11;
     if (position < 0) position = 0;
 
@@ -24,8 +24,6 @@ static void flaps_anim_timer_cb(lv_timer_t *) {
     old_Flaps_position_value = position;
 
     int32_t inverted_flaps_position = 11 - position;
-
-    Serial.printf("Inverted Flaps_position_value: %" PRId32 "\n", inverted_flaps_position);
 
     for (int i = 0; i < 11; i++) {
         if (i >= inverted_flaps_position) {

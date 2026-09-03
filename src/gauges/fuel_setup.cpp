@@ -6,7 +6,6 @@
 #include "app_state.h"
 #include "hardware_config.h"
 #include "ui_utils.h"
-#include "flow_gauge.h"
 #include "kfactor_setup.h"
 
 static Preferences prefs;
@@ -19,9 +18,14 @@ static const char *fuel_roller_options() {
     static bool built = false;
     if (!built) {
         size_t len = 0;
-        for (int i = 0; i <= FuelSensors::MAX_TANK_GALLONS && len < sizeof(options); i++) {
-            len += snprintf(options + len, sizeof(options) - len,
-                            (i == 0) ? "%d" : "\n%d", i);
+        for (int i = 0; i <= FuelSensors::MAX_TANK_GALLONS; i++) {
+            int n = snprintf(options + len, sizeof(options) - len,
+                             (i == 0) ? "%d" : "\n%d", i);
+            // snprintf returns the length it *would* have written, so a truncated
+            // write would push len past the buffer and underflow the remaining-space
+            // argument on the next pass. Stop instead.
+            if (n < 0 || (size_t)n >= sizeof(options) - len) break;
+            len += (size_t)n;
         }
         built = true;
     }
@@ -48,7 +52,6 @@ static void save_fuel_settings() {
     // Must happen before save_flow_totals(), which persists all of it.
     state.flow.total_gallons_used = 0.0f;
     state.flow.reset_average();
-    avg_gph_value = state.flow.avg_gph;   // display mirror
     // Resync the watermark too, or pulses counted since the last flow tick land in
     // the freshly zeroed total.
     noInterrupts();
@@ -58,8 +61,7 @@ static void save_fuel_settings() {
     if (state.flow.smooth_flow) state.flow.smooth_flow->reset();
     save_flow_totals();
 
-    flow_used_value = 0.0f;
-    remain_value = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
+    state.flow.remaining_gallons = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
 }
 
 void load_flow_totals() {
@@ -75,7 +77,6 @@ void load_flow_totals() {
     // cut between the two puts.
     if (state.flow.avg_gph_sample_count == 0) state.flow.reset_average();
 
-    avg_gph_value = state.flow.avg_gph;   // display mirror
     Serial.printf("Loaded total gallons: %.3f  avg gph: %.2f  samples: %u\n",
                   state.flow.total_gallons_used, state.flow.avg_gph, state.flow.avg_gph_sample_count);
 
@@ -83,9 +84,8 @@ void load_flow_totals() {
         state.flow.smooth_flow->fill((int32_t)(state.flow.avg_gph * 100.0f));
 
     get_fuel_settings();
-    flow_used_value = state.flow.total_gallons_used;
-    remain_value = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting) - flow_used_value;
-    if (remain_value < 0.0f) remain_value = 0.0f;
+    state.flow.remaining_gallons = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting) - state.flow.total_gallons_used;
+    if (state.flow.remaining_gallons < 0.0f) state.flow.remaining_gallons = 0.0f;
 }
 
 void save_flow_totals() {
@@ -130,7 +130,6 @@ static void clear_avg_gph_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         AppState &state = AppState::instance();
         state.flow.reset_average();
-        avg_gph_value = state.flow.avg_gph;   // display mirror
         noInterrupts();
         state.flow.last_pulse_count = isr_pulse_count;
         interrupts();

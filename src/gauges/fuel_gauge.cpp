@@ -3,8 +3,6 @@
 #include "sensor_utils.h"
 #include "app_state.h"
 
-int32_t Fuel_L_value = 0;
-int32_t Fuel_R_value = 0;
 static int32_t old_Fuel_L_value = -1;
 static int32_t old_Fuel_R_value = -1;
 
@@ -24,11 +22,11 @@ struct SectionStyles {
     lv_style_t main;
 };
 
-static SectionStyles zone1_styles;
-static SectionStyles zone2_styles;
-static SectionStyles zone3_styles;
-static SectionStyles zone4_styles;
-static SectionStyles zone5_styles;
+// One style set per colour, shared by both dials. The scale needs a section per
+// colour band, not per 25%, so three cover the whole range.
+static SectionStyles red_styles;
+static SectionStyles yellow_styles;
+static SectionStyles green_styles;
 
 static void init_section_styles(SectionStyles *styles, lv_color_t color) {
     lv_style_init(&styles->items);
@@ -58,11 +56,9 @@ static void add_section(lv_obj_t *target_scale, int32_t from, int32_t to,
 static void ensure_zone_styles() {
     static bool ready = false;
     if (ready) return;
-    init_section_styles(&zone1_styles, lv_palette_main(LV_PALETTE_RED));
-    init_section_styles(&zone2_styles, lv_palette_main(LV_PALETTE_YELLOW));
-    init_section_styles(&zone3_styles, lv_palette_main(LV_PALETTE_GREEN));
-    init_section_styles(&zone4_styles, lv_palette_main(LV_PALETTE_GREEN));
-    init_section_styles(&zone5_styles, lv_palette_main(LV_PALETTE_GREEN));
+    init_section_styles(&red_styles,    lv_palette_main(LV_PALETTE_RED));
+    init_section_styles(&yellow_styles, lv_palette_main(LV_PALETTE_YELLOW));
+    init_section_styles(&green_styles,  lv_palette_main(LV_PALETTE_GREEN));
     ready = true;
 }
 
@@ -106,11 +102,11 @@ static void create_fuel_gauge(const FuelGaugeConfig &cfg) {
     lv_obj_set_style_line_color(scale, lv_color_white(), LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(scale, 18, LV_PART_MAIN);
 
-    add_section(scale, 0, 15, &zone1_styles);
-    add_section(scale, 16, 25, &zone2_styles);
-    add_section(scale, 26, 50, &zone3_styles);
-    add_section(scale, 51, 75, &zone4_styles);
-    add_section(scale, 76, 100, &zone5_styles);
+    // Bands match SensorUtils::get_fuel_zone_color(), which colours the percentage
+    // readout in the middle of the dial.
+    add_section(scale, 0, 15, &red_styles);
+    add_section(scale, 16, 25, &yellow_styles);
+    add_section(scale, 26, 100, &green_styles);
 
     lv_obj_t *needle = lv_line_create(scale);
     lv_obj_set_style_line_color(needle, lv_color_white(), LV_PART_MAIN);
@@ -160,20 +156,22 @@ static void create_fuel_gauge(const FuelGaugeConfig &cfg) {
 }
 
 static void fuel_left_anim_timer_cb(lv_timer_t *) {
-    if (old_Fuel_L_value != Fuel_L_value) {
-        old_Fuel_L_value = Fuel_L_value;
-        lv_scale_set_line_needle_value(scale1, needle_line1, 100, Fuel_L_value);
-        lv_label_set_text_fmt(fuel_value_label1, "%d%%", Fuel_L_value);
-        lv_obj_set_style_text_color(fuel_value_label1, SensorUtils::get_fuel_zone_color(Fuel_L_value), 0);
+    AppState &state = AppState::instance();
+    if (old_Fuel_L_value != state.fuel.left_percentage) {
+        old_Fuel_L_value = state.fuel.left_percentage;
+        lv_scale_set_line_needle_value(scale1, needle_line1, 100, state.fuel.left_percentage);
+        lv_label_set_text_fmt(fuel_value_label1, "%d%%", state.fuel.left_percentage);
+        lv_obj_set_style_text_color(fuel_value_label1, SensorUtils::get_fuel_zone_color(state.fuel.left_percentage), 0);
     }
 }
 
 static void fuel_right_anim_timer_cb(lv_timer_t *) {
-    if (old_Fuel_R_value != Fuel_R_value) {
-        old_Fuel_R_value = Fuel_R_value;
-        lv_scale_set_line_needle_value(scale2, needle_line2, 100, Fuel_R_value);
-        lv_label_set_text_fmt(fuel_value_label2, "%d%%", Fuel_R_value);
-        lv_obj_set_style_text_color(fuel_value_label2, SensorUtils::get_fuel_zone_color(Fuel_R_value), 0);
+    AppState &state = AppState::instance();
+    if (old_Fuel_R_value != state.fuel.right_percentage) {
+        old_Fuel_R_value = state.fuel.right_percentage;
+        lv_scale_set_line_needle_value(scale2, needle_line2, 100, state.fuel.right_percentage);
+        lv_label_set_text_fmt(fuel_value_label2, "%d%%", state.fuel.right_percentage);
+        lv_obj_set_style_text_color(fuel_value_label2, SensorUtils::get_fuel_zone_color(state.fuel.right_percentage), 0);
     }
 }
 
