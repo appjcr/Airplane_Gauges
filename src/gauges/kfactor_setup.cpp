@@ -22,9 +22,14 @@ static const char *kfactor_roller_options() {
     if (!built) {
         size_t len = 0;
         for (int v = FlowSensor::MIN_K_FACTOR_THOUSANDS;
-             v <= FlowSensor::MAX_K_FACTOR_THOUSANDS && len < sizeof(options); v++) {
-            len += snprintf(options + len, sizeof(options) - len,
-                            (v == FlowSensor::MIN_K_FACTOR_THOUSANDS) ? "%d" : "\n%d", v);
+             v <= FlowSensor::MAX_K_FACTOR_THOUSANDS; v++) {
+            int n = snprintf(options + len, sizeof(options) - len,
+                             (v == FlowSensor::MIN_K_FACTOR_THOUSANDS) ? "%d" : "\n%d", v);
+            // snprintf returns the length it *would* have written, so a truncated
+            // write would push len past the buffer and underflow the remaining-space
+            // argument on the next pass. Stop instead.
+            if (n < 0 || (size_t)n >= sizeof(options) - len) break;
+            len += (size_t)n;
         }
         built = true;
     }

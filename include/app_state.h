@@ -7,10 +7,13 @@
 
 // ── Fuel System State ─────────────────────────────────
 struct FuelSystem {
-    FuelReading left_tank;
-    FuelReading right_tank;
-    int left_user_setting;
-    int right_user_setting;
+    // Tank contents in percent, from the capacitance sensors via the lookup tables.
+    int32_t left_percentage = 0;
+    int32_t right_percentage = 0;
+
+    // Gallons aboard as entered on the setup screen; persisted to NVS.
+    int left_user_setting = 0;
+    int right_user_setting = 0;
 
     SmoothingBuffer* smooth_left = nullptr;
     SmoothingBuffer* smooth_right = nullptr;
@@ -18,24 +21,23 @@ struct FuelSystem {
 
 // ── ADC System State ──────────────────────────────────
 struct ADCSystem {
-    int32_t flaps_position;
-    int32_t elevator_trim;
-    int32_t aileron_trim;
+    int32_t flaps_raw = 0;        // straight off the ADS7830, before scaling
+    int32_t flaps_position = 0;   // 0..11 bar units
+    int32_t elevator_trim = 0;    // percent
+    int32_t aileron_trim = 0;     // percent
 };
 
 // ── Flow System State ─────────────────────────────────
 struct FlowSystem {
-    float current_gph;
-    float total_gallons_used;
-    float remaining;
-    float used;
-    int32_t time_to_empty_hours;
-    int32_t time_to_empty_minutes;
+    float current_gph = 0.0f;
+    float total_gallons_used = 0.0f;
+    float remaining_gallons = 0.0f;
+    int32_t time_to_empty_hours = 0;
+    int32_t time_to_empty_minutes = 0;
 
     // Running mean of raw_gph and the sample count it is divided by. These are two
     // halves of ONE value: they must be reset together and persisted together, so
     // reset them only through reset_average() and never touch either alone.
-    // avg_gph_value in flow_gauge.h is a display mirror of avg_gph, not the source.
     float avg_gph = 0.0f;
     uint32_t avg_gph_sample_count = 0;
 
@@ -64,9 +66,9 @@ struct FlowSystem {
 
 // ── Serial Buffer State ───────────────────────────────
 struct SerialBuffer {
-    uint8_t data[10];
-    int32_t counter;
-    int32_t bytes_read;
+    uint8_t data[10] = {0};
+    int32_t counter = 0;
+    int32_t bytes_read = 0;
 };
 
 // ── Startup Animation State ──────────────────────────

@@ -101,7 +101,12 @@ static void read_tank_sensor(SoftwareSerial &serial,
     buffer.counter++;
     memset(buffer.data, 0, sizeof(buffer.data));
     buffer.bytes_read = serial.readBytesUntil('\n', buffer.data, sizeof(buffer.data));
-    if (buffer.bytes_read < 2) return;
+    if (buffer.bytes_read < 2) {
+        // Drop the remainder as well. Leaving a partial frame queued would leave
+        // every subsequent read byte-shifted.
+        while (serial.available() > 0) serial.read();
+        return;
+    }
 
     int32_t raw = (buffer.data[0] | (buffer.data[1] << 8));
 
@@ -135,39 +140,50 @@ static void read_tank_sensor(SoftwareSerial &serial,
 
 static void fuel_sensors_timer_cb(lv_timer_t *) {
     AppState &state = AppState::instance();
-    read_tank_sensor(serial_fuel_left, state.serial_left, Fuel_L_value, state.fuel.smooth_left,
+    read_tank_sensor(serial_fuel_left, state.serial_left, state.fuel.left_percentage, state.fuel.smooth_left,
                     FuelSensors::LEFT_CAP_FULL, FuelSensors::LEFT_CAP_EMPTY, FuelSensors::LEFT_EMPTY_THRESH,
                     fuel_L_table, FUEL_L_TABLE_SIZE, "Left");
-    read_tank_sensor(serial_fuel_right, state.serial_right, Fuel_R_value, state.fuel.smooth_right,
+    read_tank_sensor(serial_fuel_right, state.serial_right, state.fuel.right_percentage, state.fuel.smooth_right,
                     FuelSensors::RIGHT_CAP_FULL, FuelSensors::RIGHT_CAP_EMPTY, FuelSensors::RIGHT_EMPTY_THRESH,
                     fuel_R_table, FUEL_R_TABLE_SIZE, "Right");
 }
 
+// readADCsingle() returns -1 when the I2C transfer fails. Clamping that would park
+// every channel on its low rail - a dead bus would indicate full flaps and zeroed
+// trim - so a failed read holds the last good value and is logged on state change.
 static void trim_flap_sensors_timer_cb(lv_timer_t *) {
     AppState &state = AppState::instance();
+    int16_t flaps_raw = ad7830.readADCsingle(ADC::CH_FLAPS);
+    int16_t ailer_raw = ad7830.readADCsingle(ADC::CH_AILERON);
+    int16_t elev_raw  = ad7830.readADCsingle(ADC::CH_ELEVATOR);
 
-    // Read flaps and trim values from ADS7830 ADC and convert to physical units
+    static bool read_failed = false;
+    bool failed_now = (flaps_raw < 0) || (ailer_raw < 0) || (elev_raw < 0);
+    if (failed_now != read_failed) {
+        read_failed = failed_now;
+        Serial.println(failed_now ? "ADS7830 read failed - holding last values"
+                                  : "ADS7830 reads recovered");
+    }
 
-    // Flaps: 30-242 raw ADC to a value between 0 and 11
-    Flaps_position_value_raw = ad7830.readADCsingle(ADC::CH_FLAPS);
-    Serial.printf("Flaps_position_value raw: %" PRId32 "\n", Flaps_position_value_raw);
-
-    // adjust to 30 offset to zero out low value
-    Flaps_position_value = Flaps_position_value_raw - ADC::FLAPS_LO;
-
-    Flaps_position_value = SensorUtils::read_and_clamp_adc(Flaps_position_value,
-                                        (ADC::FLAPS_LO - ADC::FLAPS_LO), (ADC::FLAPS_HI - ADC::FLAPS_LO), ADC::FLAPS_SCALE);
-    Serial.printf("Flaps_position_value clamped: %" PRId32 "\n", Flaps_position_value);
+    // Flaps: FLAPS_LO..FLAPS_HI raw ADC to a value between 0 and 11, offset by
+    // FLAPS_LO first so the low end zeroes out.
+    if (flaps_raw >= 0) {
+        state.adc.flaps_raw = flaps_raw;
+        state.adc.flaps_position = SensorUtils::read_and_clamp_adc(flaps_raw - ADC::FLAPS_LO,
+                                        0, ADC::FLAPS_HI - ADC::FLAPS_LO, ADC::FLAPS_SCALE);
+    }
 
     // Aileron trim: 0-255 raw ADC to a value between 0 and 100
-    ailer_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_AILERON),
-                                                       ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
-    //Serial.printf("ailer_trim_value: %" PRId32 "\n", ailer_trim_value);
+    if (ailer_raw >= 0) {
+        state.adc.aileron_trim = SensorUtils::read_and_clamp_adc(ailer_raw,
+                                        ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
+    }
 
     // Elevator trim: 0-255 raw ADC to a value between 0 and 100
-    elev_trim_value = SensorUtils::read_and_clamp_adc(ad7830.readADCsingle(ADC::CH_ELEVATOR),
-                                                      ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
-    //Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
+    if (elev_raw >= 0) {
+        state.adc.elevator_trim = SensorUtils::read_and_clamp_adc(elev_raw,
+                                        ADC::TRIM_LO, ADC::TRIM_HI, ADC::TRIM_SCALE);
+    }
 }
 
 // Declared in sensors.h. Nothing but pulse_isr() may write these.
@@ -221,9 +237,8 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     }
 
     float initial_fuel = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
-    flow_used_value = state.flow.total_gallons_used;
-    remain_value = initial_fuel - flow_used_value;
-    if (remain_value < 0.0f) remain_value = 0.0f;
+    state.flow.remaining_gallons = initial_fuel - state.flow.total_gallons_used;
+    if (state.flow.remaining_gallons < 0.0f) state.flow.remaining_gallons = 0.0f;
 
     // ── Displayed rate ────────────────────────────────
     // Needs a recent pulse and a reading inside the FT-60's rated range — below
@@ -240,27 +255,32 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     if (rate_shown) {
         int32_t smoothed_scaled = state.flow.smooth_flow->add_reading((int32_t)(raw_gph * 100.0f));
         state.flow.current_gph = (float)smoothed_scaled / 100.0f;
-        flow_value = state.flow.current_gph;
 
         state.flow.add_average_sample(raw_gph);
-        avg_gph_value = state.flow.avg_gph;   // display mirror
 
         if (state.flow.current_gph > 0.0f) {
-            float hours = remain_value / state.flow.current_gph;
-            time_to_empty_hours_value = (int32_t)hours;
-            time_to_empty_minutes_value = (int32_t)((hours - (float)time_to_empty_hours_value) * 60.0f);
+            float hours = state.flow.remaining_gallons / state.flow.current_gph;
+            state.flow.time_to_empty_hours = (int32_t)hours;
+            state.flow.time_to_empty_minutes = (int32_t)((hours - (float)state.flow.time_to_empty_hours) * 60.0f);
         }
     } else {
         state.flow.current_gph = 0.0f;
-        flow_value = 0.0f;
-        time_to_empty_hours_value = 0;
-        time_to_empty_minutes_value = 0;
+        state.flow.time_to_empty_hours = 0;
+        state.flow.time_to_empty_minutes = 0;
+        // Drop the damping window too, or the first reading after flow resumes is
+        // the rate from before it stopped, decaying over the next few ticks.
+        state.flow.smooth_flow->reset();
     }
 
+    // Gate on the total actually having moved: parked with the engine off this
+    // would otherwise rewrite the same three NVS keys every 30 s indefinitely.
     static uint32_t last_save_ms = 0;
-    bool saved = (now - last_save_ms) >= Timers::FLOW_SAVE_INTERVAL_MS;
+    static float last_saved_total = -1.0f;
+    bool saved = (now - last_save_ms) >= Timers::FLOW_SAVE_INTERVAL_MS &&
+                 state.flow.total_gallons_used != last_saved_total;
     if (saved) {
         last_save_ms = now;
+        last_saved_total = state.flow.total_gallons_used;
         save_flow_totals();
     }
 
@@ -268,8 +288,8 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
     if (saved || (now - last_log_ms) >= Timers::FLOW_LOG_INTERVAL_MS) {
         last_log_ms = now;
         Serial.printf("Saved: %d  Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulses: %u (+%u in %u ms)\n",
-                     (int)saved, flow_value, flow_used_value, remain_value,
-                     (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value, avg_gph_value,
+                     (int)saved, state.flow.current_gph, state.flow.total_gallons_used, state.flow.remaining_gallons,
+                     (int)state.flow.time_to_empty_hours, (int)state.flow.time_to_empty_minutes, state.flow.avg_gph,
                      current_pulses, pulses_in_interval, elapsed_ms);
     }
 }
@@ -335,11 +355,13 @@ void setup() {
 
     lv_obj_t *btn_setup = UIUtils::create_button_with_label(state.ui.screen_gauges, "Setup");
     lv_obj_align(btn_setup, LV_ALIGN_TOP_MID, 0, 4);
-    lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, state.ui.screen_gauges);
+    lv_obj_add_event_cb(btn_setup, switch_to_setup_event_cb, LV_EVENT_CLICKED, nullptr);
 
     Serial.println("Start receiving TTL to serial feeds\n");
     serial_fuel_left.begin(FuelSensors::BAUD);
     serial_fuel_right.begin(FuelSensors::BAUD);
+    serial_fuel_left.setTimeout(FuelSensors::READ_TIMEOUT_MS);
+    serial_fuel_right.setTimeout(FuelSensors::READ_TIMEOUT_MS);
 
     Wire1.begin(ADC::SDA, ADC::SCL, ADC::I2C_FREQ);
     Serial.println("Adafruit ADS7830 start\n");
@@ -392,11 +414,11 @@ void loop() {
         if (tick - state.startup.last_run >= Timers::STARTUP_ANIM_INTERVAL_MS) {
             state.startup.last_run = tick;
             Serial.println(state.startup.value);
-            Fuel_L_value = state.startup.value * 5;
-            Fuel_R_value = state.startup.value * 5;
-            Flaps_position_value = state.startup.value;
-            ailer_trim_value = state.startup.value * 5;
-            elev_trim_value = state.startup.value * 5;
+            state.fuel.left_percentage = state.startup.value * 5;
+            state.fuel.right_percentage = state.startup.value * 5;
+            state.adc.flaps_position = state.startup.value;
+            state.adc.aileron_trim = state.startup.value * 5;
+            state.adc.elevator_trim = state.startup.value * 5;
             if (!state.startup.reverse && state.startup.value <= 20) {
                 state.startup.value++;
             } else {

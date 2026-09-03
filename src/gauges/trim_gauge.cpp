@@ -3,10 +3,8 @@
 #include "hardware_config.h"
 #include "app_state.h"
 
-int32_t elev_trim_value = 0;
-int32_t ailer_trim_value = 0;
-int32_t old_elev_trim_value = -1;
-int32_t old_ailer_trim_value = -1;
+static int32_t old_elev_trim_value = -1;
+static int32_t old_ailer_trim_value = -1;
 
 static lv_obj_t *elev_label = nullptr;
 static lv_obj_t *ailer_label = nullptr;
@@ -14,14 +12,15 @@ static lv_obj_t *elev_line = nullptr;
 static lv_obj_t *ailer_line = nullptr;
 
 static void trim_anim_timer_cb(lv_timer_t *) {
-    if (old_elev_trim_value != elev_trim_value) {
-        old_elev_trim_value = elev_trim_value;
+    AppState &state = AppState::instance();
+    if (old_elev_trim_value != state.adc.elevator_trim) {
+        old_elev_trim_value = state.adc.elevator_trim;
         lv_obj_set_pos(elev_line, TrimGauge::CENTER_X,
-                       (int)(elev_trim_value * TrimGauge::POSITION_SCALE));
+                       (int)(state.adc.elevator_trim * TrimGauge::POSITION_SCALE));
     }
-    if (old_ailer_trim_value != ailer_trim_value) {
-        old_ailer_trim_value = ailer_trim_value;
-        lv_obj_set_pos(ailer_line, (int)(ailer_trim_value * TrimGauge::POSITION_SCALE),
+    if (old_ailer_trim_value != state.adc.aileron_trim) {
+        old_ailer_trim_value = state.adc.aileron_trim;
+        lv_obj_set_pos(ailer_line, (int)(state.adc.aileron_trim * TrimGauge::POSITION_SCALE),
                        TrimGauge::CENTER_Y);
     }
 }

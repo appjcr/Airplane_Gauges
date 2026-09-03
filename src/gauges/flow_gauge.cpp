@@ -3,13 +3,6 @@
 #include "flow_gauge.h"
 #include "app_state.h"
 
-float flow_value = 0.00f;
-float remain_value = 0.00f;
-float flow_used_value = 0.00f;
-float avg_gph_value = 0.00f;
-int32_t time_to_empty_minutes_value = 0;
-int32_t time_to_empty_hours_value = 0;
-
 static lv_obj_t *flow_value_label = nullptr;
 static lv_obj_t *remain_value_label = nullptr;
 static lv_obj_t *flow_used_value_label = nullptr;
@@ -35,15 +28,16 @@ static void set_value_if_changed(lv_obj_t *label, float value, int32_t &old_cent
 }
 
 static void flow_anim_timer_cb(lv_timer_t *) {
-    set_value_if_changed(flow_value_label,      flow_value,      old_flow_cents);
-    set_value_if_changed(remain_value_label,    remain_value,    old_remain_cents);
-    set_value_if_changed(flow_used_value_label, flow_used_value, old_used_cents);
-    set_value_if_changed(avg_gph_value_label,   avg_gph_value,   old_avg_cents);
+    AppState &state = AppState::instance();
+    set_value_if_changed(flow_value_label,      state.flow.current_gph,        old_flow_cents);
+    set_value_if_changed(remain_value_label,    state.flow.remaining_gallons,  old_remain_cents);
+    set_value_if_changed(flow_used_value_label, state.flow.total_gallons_used, old_used_cents);
+    set_value_if_changed(avg_gph_value_label,   state.flow.avg_gph,            old_avg_cents);
 
     // Fold "what's displayed" into one comparable number: -1 for the placeholder,
     // otherwise HHMM.
-    int32_t tte_shown = (flow_value > 0.0f)
-        ? (time_to_empty_hours_value * 100 + time_to_empty_minutes_value)
+    int32_t tte_shown = (state.flow.current_gph > 0.0f)
+        ? (state.flow.time_to_empty_hours * 100 + state.flow.time_to_empty_minutes)
         : -1;
     if (tte_shown == old_tte_shown) return;
     old_tte_shown = tte_shown;
@@ -52,7 +46,7 @@ static void flow_anim_timer_cb(lv_timer_t *) {
         lv_label_set_text(time_to_empty_value_label, "HH:MM");
     } else {
         lv_label_set_text_fmt(time_to_empty_value_label, "%02d:%02d",
-                             (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
+                             (int)state.flow.time_to_empty_hours, (int)state.flow.time_to_empty_minutes);
     }
 }
 
@@ -122,7 +116,7 @@ void flow_gauge(int gauge_timer_value) {
 
     time_to_empty_value_label = lv_label_create(flow_cont);
     lv_label_set_text_fmt(time_to_empty_value_label, "%02d:%02d",
-                         (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
+                         (int)state.flow.time_to_empty_hours, (int)state.flow.time_to_empty_minutes);
     lv_obj_set_style_text_font(time_to_empty_value_label, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(time_to_empty_value_label, lv_color_white(), 0);
     lv_obj_align(time_to_empty_value_label, LV_ALIGN_TOP_LEFT, 45, 160);

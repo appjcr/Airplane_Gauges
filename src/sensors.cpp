@@ -1,10 +1,15 @@
 #include "sensors.h"
 #include <cstring>
+#include <new>
 
+// A zero/negative window or a failed allocation would divide by zero and index a
+// null pointer respectively. Neither can happen with the current constants, but the
+// buffer degrades to a pass-through rather than crashing if one ever does.
 SmoothingBuffer::SmoothingBuffer(int size)
-    : read_index(0), total(0), buffer_size(size), samples_filled(0) {
-    readings = new int[size];
-    memset(readings, 0, size * sizeof(int));
+    : readings(nullptr), read_index(0), total(0),
+      buffer_size(size > 0 ? size : 1), samples_filled(0) {
+    readings = new (std::nothrow) int[buffer_size];
+    if (readings) memset(readings, 0, buffer_size * sizeof(int));
 }
 
 SmoothingBuffer::~SmoothingBuffer() {
@@ -12,6 +17,7 @@ SmoothingBuffer::~SmoothingBuffer() {
 }
 
 int32_t SmoothingBuffer::add_reading(int32_t value) {
+    if (!readings) return value;
     total -= readings[read_index];
     readings[read_index] = value;
     total += value;
@@ -23,6 +29,7 @@ int32_t SmoothingBuffer::add_reading(int32_t value) {
 }
 
 void SmoothingBuffer::fill(int32_t value) {
+    if (!readings) return;
     for (int i = 0; i < buffer_size; i++) readings[i] = value;
     total = (int64_t)value * buffer_size;
     read_index = 0;
@@ -30,6 +37,7 @@ void SmoothingBuffer::fill(int32_t value) {
 }
 
 void SmoothingBuffer::reset() {
+    if (!readings) return;
     memset(readings, 0, buffer_size * sizeof(int));
     total = 0;
     read_index = 0;

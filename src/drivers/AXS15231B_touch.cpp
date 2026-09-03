@@ -89,13 +89,13 @@ bool AXS15231B_Touch::update() {
     uint16_t raw_X = AXS_GET_POINT_X(tmp_buf);
     uint16_t raw_Y = AXS_GET_POINT_Y(tmp_buf);
 
-    // Validate data
-    if (point_X || point_Y) {
-        if (raw_X > x_real_max) raw_X = x_real_max;
-        if (raw_X < x_real_min) raw_X = x_real_min;
-        if (raw_Y > y_real_max) raw_Y = y_real_max;
-        if (raw_Y < y_real_min) raw_Y = y_real_min;
-    }
+    // Validate data. This has to run on every sample, not just once a previous point
+    // exists: correctOffset() feeds these to map() as uint16_t, so a raw reading below
+    // x_real_min/y_real_min underflows into a huge coordinate.
+    if (raw_X > x_real_max) raw_X = x_real_max;
+    if (raw_X < x_real_min) raw_X = x_real_min;
+    if (raw_Y > y_real_max) raw_Y = y_real_max;
+    if (raw_Y < y_real_min) raw_Y = y_real_min;
 
     // Correct offset if enabled
     uint16_t x_max, y_max;

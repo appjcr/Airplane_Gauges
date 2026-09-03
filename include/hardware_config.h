@@ -49,7 +49,8 @@ namespace ADC {
     constexpr uint8_t CH_AILERON = 1;
     constexpr uint8_t CH_ELEVATOR = 2;
 
-    // Flaps scaling (0-255 raw ADC to 0-20 degrees)
+    // Flaps scaling: raw ADC FLAPS_LO..FLAPS_HI maps to 0..11 bar units on the
+    // flaps gauge — not degrees. The scale's degree labels are decorative.
     constexpr int16_t FLAPS_LO = 30;
     constexpr int16_t FLAPS_HI = 242;
     constexpr float FLAPS_SCALE = 0.05188f;
@@ -65,6 +66,11 @@ namespace FuelSensors {
     constexpr uint8_t PIN_LEFT = 5;
     constexpr uint8_t PIN_RIGHT = 6;
     constexpr uint32_t BAUD = 1200;
+
+    // Bound on readBytesUntil(). Stream's 1000 ms default would let a single dropped
+    // frame terminator block the sensor callback — and with it lv_timer_handler() —
+    // for a full second. A 2-byte frame plus terminator is ~25 ms at 1200 baud.
+    constexpr uint32_t READ_TIMEOUT_MS = 50;
 
     // Left tank calibration
     constexpr int16_t LEFT_CAP_FULL = 805;
