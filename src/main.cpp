@@ -16,6 +16,7 @@
 #include "trim_gauge.h"
 #include "flow_gauge.h"
 #include "fuel_setup.h"
+#include "kfactor_setup.h"
 
 // Global instances
 Adafruit_ADS7830 ad7830;
@@ -60,10 +61,16 @@ static uint32_t millis_cb(void) {
     return millis();
 }
 
+// Set whenever anything writes the canvas, cleared when it is pushed to the panel.
+// Only ever touched from loop() context (LVGL flush callbacks run inside
+// lv_timer_handler), so no interrupt guard is needed.
+static bool canvas_dirty = false;
+
 static void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     uint32_t w = lv_area_get_width(area);
     uint32_t h = lv_area_get_height(area);
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
+    canvas_dirty = true;
     lv_disp_flush_ready(disp);
 }
 
@@ -92,11 +99,21 @@ static void read_tank_sensor(SoftwareSerial &serial,
     if (serial.available() < 2) return;
 
     buffer.counter++;
-    memset(buffer.data, 0, 10);
-    buffer.bytes_read = serial.readBytesUntil('\n', buffer.data, 10);
+    memset(buffer.data, 0, sizeof(buffer.data));
+    buffer.bytes_read = serial.readBytesUntil('\n', buffer.data, sizeof(buffer.data));
     if (buffer.bytes_read < 2) return;
 
-    fuel_value = (buffer.data[0] | (buffer.data[1] << 8));
+    int32_t raw = (buffer.data[0] | (buffer.data[1] << 8));
+
+    // Landing mid-frame decodes to nonsense. Drop it rather than clamping — a clamp
+    // would hand the smoother a rail value as though it were a genuine reading.
+    if (raw < FuelSensors::RAW_PLAUSIBLE_MIN || raw > FuelSensors::RAW_PLAUSIBLE_MAX) {
+        Serial.printf("%s: implausible frame, raw %" PRId32 " discarded\n", side, raw);
+        while (serial.available() > 0) serial.read();
+        return;
+    }
+
+    fuel_value = raw;
     if (fuel_value < full_cap) fuel_value = full_cap;
     if (fuel_value > empty_cap) fuel_value = empty_cap;
 
@@ -153,38 +170,80 @@ static void trim_flap_sensors_timer_cb(lv_timer_t *) {
     //Serial.printf("elev_trim_value: %" PRId32 "\n", elev_trim_value);
 }
 
+// Declared in sensors.h. Nothing but pulse_isr() may write these.
+volatile uint32_t isr_pulse_count = 0;
+volatile uint32_t isr_last_pulse_ms = 0;
+
+// Touches no flash-resident code: two DRAM counters and millis(), which is IRAM-safe.
+// Calling AppState::instance() from here would reach into flash, which is unavailable
+// whenever the cache is off during an NVS write.
 static void IRAM_ATTR pulse_isr() {
-    AppState &state = AppState::instance();
-    state.flow.pulse_count++;
-    state.flow.last_pulse_time_ms = millis();
+    isr_pulse_count++;
+    isr_last_pulse_ms = millis();
 }
 
 static void flow_sensor_timer_cb(lv_timer_t *) {
     AppState &state = AppState::instance();
-    uint32_t current_pulses = state.flow.pulse_count;
+
+    uint32_t now = millis();
+    uint32_t elapsed_ms = now - state.flow.last_calc_time_ms;
+    if (elapsed_ms == 0) return;  // same-millisecond re-entry: nothing to rate yet
+    state.flow.last_calc_time_ms = now;
+
+    // Both counters are written by pulse_isr(), so snapshot them together with
+    // interrupts held off — otherwise a pulse landing between the two reads gives
+    // a count and a timestamp that disagree.
+    noInterrupts();
+    uint32_t current_pulses = isr_pulse_count;
+    uint32_t last_pulse_time = isr_last_pulse_ms;
+    interrupts();
+
     uint32_t pulses_in_interval = current_pulses - state.flow.last_pulse_count;
     state.flow.last_pulse_count = current_pulses;
 
-    float k_factor = FlowSensor::PULSES_PER_GALLON;
-    float interval_sec = (float)Timers::FLOW_SENSOR_MS / 1000.0f;
-    float raw_gph = ((float)pulses_in_interval / k_factor) / interval_sec * 3600.0f;
+    // The pulses cover however long it actually was since the last calc, not the
+    // nominal timer period — LVGL timers run late, and this callback itself writes
+    // NVS every other tick. Rating against a fixed 400 ms would read high.
+    float k_factor = (float)state.flow.k_factor_thousands * 1000.0f;
+    float gallons_in_interval = (float)pulses_in_interval / k_factor;
+    float raw_gph = gallons_in_interval * 3600000.0f / (float)elapsed_ms;
 
-    bool pulse_fresh = (millis() - state.flow.last_pulse_time_ms) < FlowSensor::STALE_TIMEOUT_MS;
+    bool pulse_fresh = (now - last_pulse_time) < FlowSensor::STALE_TIMEOUT_MS;
 
-    if (pulse_fresh && raw_gph >= FlowSensor::MIN_GPH && raw_gph <= FlowSensor::MAX_GPH) {
-        state.flow.total_gallons_used += (float)pulses_in_interval / k_factor;
+    // ── Totalizer ─────────────────────────────────────
+    // Every pulse is fuel that went through the transducer, so it counts even when
+    // the rate is too slow to display. The one thing rejected is an implausibly high
+    // rate: that's electrical noise, and folding a noise burst into a total that gets
+    // persisted to NVS would corrupt it permanently.
+    bool plausible = (raw_gph <= FlowSensor::MAX_GPH);
+    if (plausible) {
+        state.flow.total_gallons_used += gallons_in_interval;
+    }
 
+    float initial_fuel = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
+    flow_used_value = state.flow.total_gallons_used;
+    remain_value = initial_fuel - flow_used_value;
+    if (remain_value < 0.0f) remain_value = 0.0f;
+
+    // ── Displayed rate ────────────────────────────────
+    // Needs a recent pulse and a reading inside the FT-60's rated range — below
+    // MIN_GPH the transducer isn't linear, so show nothing rather than a bad number.
+    // The gate is hysteretic: once a rate is being shown the bar drops by
+    // MIN_GPH_HYSTERESIS, so a reading parked near the threshold doesn't blink on and
+    // off as the pulse count per interval alternates between two integers.
+    static bool rate_shown = false;
+    const float gate = rate_shown
+        ? (FlowSensor::MIN_GPH - FlowSensor::MIN_GPH_HYSTERESIS)
+        : FlowSensor::MIN_GPH;
+    rate_shown = plausible && pulse_fresh && (raw_gph >= gate);
+
+    if (rate_shown) {
         int32_t smoothed_scaled = state.flow.smooth_flow->add_reading((int32_t)(raw_gph * 100.0f));
         state.flow.current_gph = (float)smoothed_scaled / 100.0f;
         flow_value = state.flow.current_gph;
 
-        state.flow.avg_gph_sample_count++;
-        avg_gph_value += (raw_gph - avg_gph_value) / (float)state.flow.avg_gph_sample_count;
-
-        float initial_fuel = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
-        flow_used_value = state.flow.total_gallons_used;
-        remain_value = initial_fuel - flow_used_value;
-        if (remain_value < 0.0f) remain_value = 0.0f;
+        state.flow.add_average_sample(raw_gph);
+        avg_gph_value = state.flow.avg_gph;   // display mirror
 
         if (state.flow.current_gph > 0.0f) {
             float hours = remain_value / state.flow.current_gph;
@@ -198,15 +257,21 @@ static void flow_sensor_timer_cb(lv_timer_t *) {
         time_to_empty_minutes_value = 0;
     }
 
-    static uint32_t save_ticks = 0;
-    if (++save_ticks >= 2) {
-        save_ticks = 0;
+    static uint32_t last_save_ms = 0;
+    bool saved = (now - last_save_ms) >= Timers::FLOW_SAVE_INTERVAL_MS;
+    if (saved) {
+        last_save_ms = now;
         save_flow_totals();
     }
 
-    Serial.printf("Save ticks: %u Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulse count: %u\n",
-                 save_ticks, flow_value, flow_used_value, remain_value,
-                 (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value, avg_gph_value, state.flow.pulse_count);
+    static uint32_t last_log_ms = 0;
+    if (saved || (now - last_log_ms) >= Timers::FLOW_LOG_INTERVAL_MS) {
+        last_log_ms = now;
+        Serial.printf("Saved: %d  Flow: %.2f GPH  Used: %.2f gal  Rem: %.2f gal  TTE: %02d:%02d  Avg flow: %.2f  Pulses: %u (+%u in %u ms)\n",
+                     (int)saved, flow_value, flow_used_value, remain_value,
+                     (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value, avg_gph_value,
+                     current_pulses, pulses_in_interval, elapsed_ms);
+    }
 }
 
 void setup() {
@@ -225,6 +290,7 @@ void setup() {
         return;
     }
     gfx->fillScreen(BLACK);
+    canvas_dirty = true;  // written straight to the canvas, still needs a push
 
     pinMode(TFT::BL_PIN, OUTPUT);
     digitalWrite(TFT::BL_PIN, HIGH);
@@ -279,18 +345,23 @@ void setup() {
     Serial.println("Adafruit ADS7830 start\n");
     if (!ad7830.begin(ADC::I2C_ADDR, &Wire1)) {
         Serial.println("Failed to initialize ADS7830!\n");
-        while (1);
+        return;
     }
 
     state.fuel.smooth_left = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
     state.fuel.smooth_right = new SmoothingBuffer(FuelSensors::SMOOTH_BUFFER_SIZE);
     state.flow.smooth_flow = new SmoothingBuffer(FlowSensor::SMOOTH_BUFFER_SIZE);
 
+    // FT-60 output is open-collector; a 2k pull-up to 3.3V is wired on the signal line.
     pinMode(FlowSensor::PIN, INPUT);
-    attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, FALLING);
+    attachInterrupt(digitalPinToInterrupt(FlowSensor::PIN), pulse_isr, RISING);
 
+    load_k_factor();   // before the flow timer starts rating any pulses
     load_flow_totals();
-    state.flow.last_pulse_count = state.flow.pulse_count;
+    noInterrupts();
+    state.flow.last_pulse_count = isr_pulse_count;
+    interrupts();
+    state.flow.last_calc_time_ms = millis();
 
     fuel_gaugeL(Timers::GAUGE_FUEL_MS);
     fuel_gaugeR(Timers::GAUGE_FUEL_MS);
@@ -299,17 +370,27 @@ void setup() {
     flow_gauge(Timers::GAUGE_FLOW_MS);
     
     setup_fuel_gui();
-    
+    setup_kfactor_gui();
+
     lv_screen_load(state.ui.screen_gauges);
+
+    state.startup.last_run = lv_tick_get();
+    state.ui.init_complete = true;   // every early return above leaves this false
 }
 
 void loop() {
     AppState &state = AppState::instance();
 
+    // setup() failed somewhere; running LVGL or the panel from here is undefined.
+    if (!state.ui.init_complete) {
+        delay(100);
+        return;
+    }
+
     if (state.startup.active) {
-        delay(200);
-        if (lv_tick_get() - state.startup.last_run >= Timers::STARTUP_ANIM_INTERVAL_MS) {
-            state.startup.last_run += Timers::STARTUP_ANIM_INTERVAL_MS;
+        uint32_t tick = lv_tick_get();
+        if (tick - state.startup.last_run >= Timers::STARTUP_ANIM_INTERVAL_MS) {
+            state.startup.last_run = tick;
             Serial.println(state.startup.value);
             Fuel_L_value = state.startup.value * 5;
             Fuel_R_value = state.startup.value * 5;
@@ -334,5 +415,11 @@ void loop() {
     }
 
     lv_timer_handler_run_in_period(Timers::LVGL_HANDLER_PERIOD_MS);
-    gfx->flush();
+
+    // Pushing the canvas is ~307 KB over QSPI (~15 ms), so only do it when LVGL
+    // actually drew something rather than on every pass through loop().
+    if (canvas_dirty) {
+        canvas_dirty = false;
+        gfx->flush();
+    }
 }

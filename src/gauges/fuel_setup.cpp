@@ -7,9 +7,26 @@
 #include "hardware_config.h"
 #include "ui_utils.h"
 #include "flow_gauge.h"
+#include "kfactor_setup.h"
 
 static Preferences prefs;
-static const char *fuel_options = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
+
+// "0\n1\n...\nMAX_TANK_GALLONS", built once on first use. Generated rather than
+// written out so the option list and MAX_TANK_GALLONS cannot drift apart — the
+// roller's selected *index* is used directly as the gallon value.
+static const char *fuel_roller_options() {
+    static char options[(FuelSensors::MAX_TANK_GALLONS + 1) * 5 + 1];
+    static bool built = false;
+    if (!built) {
+        size_t len = 0;
+        for (int i = 0; i <= FuelSensors::MAX_TANK_GALLONS && len < sizeof(options); i++) {
+            len += snprintf(options + len, sizeof(options) - len,
+                            (i == 0) ? "%d" : "\n%d", i);
+        }
+        built = true;
+    }
+    return options;
+}
 
 static void get_fuel_settings() {
     AppState &state = AppState::instance();
@@ -27,29 +44,43 @@ static void save_fuel_settings() {
     prefs.end();
     Serial.printf("Saved: Left %d, Right %d\n", state.fuel.left_user_setting, state.fuel.right_user_setting);
 
-    // Refuel event: reset consumption so remaining/TTE compute from the new load
-    state.flow.total_gallons_used   = 0.0f;
-    state.flow.avg_gph_sample_count = 0;
+    // Refuel event: reset consumption so remaining/TTE compute from the new load.
+    // Must happen before save_flow_totals(), which persists all of it.
+    state.flow.total_gallons_used = 0.0f;
+    state.flow.reset_average();
+    avg_gph_value = state.flow.avg_gph;   // display mirror
+    // Resync the watermark too, or pulses counted since the last flow tick land in
+    // the freshly zeroed total.
+    noInterrupts();
+    state.flow.last_pulse_count = isr_pulse_count;
+    interrupts();
+    state.flow.last_calc_time_ms = millis();
     if (state.flow.smooth_flow) state.flow.smooth_flow->reset();
     save_flow_totals();
 
     flow_used_value = 0.0f;
     remain_value = (float)(state.fuel.left_user_setting + state.fuel.right_user_setting);
-    avg_gph_value = 0.0f;
 }
 
 void load_flow_totals() {
     AppState &state = AppState::instance();
     prefs.begin("flow_data", true);
     state.flow.total_gallons_used    = prefs.getFloat("total_gal_used",  0.0f);
-    avg_gph_value                    = prefs.getFloat("avg_gph",         0.0f);
+    state.flow.avg_gph               = prefs.getFloat("avg_gph",         0.0f);
     state.flow.avg_gph_sample_count  = prefs.getUInt( "avg_gph_samples", 0);
     prefs.end();
-    Serial.printf("Loaded total gallons: %.3f  avg gph: %.2f  samples: %u\n",
-                  state.flow.total_gallons_used, avg_gph_value, state.flow.avg_gph_sample_count);
 
-    if (state.flow.smooth_flow && avg_gph_value > 0.0f)
-        state.flow.smooth_flow->fill((int32_t)(avg_gph_value * 100.0f));
+    // A mean with no samples behind it is meaningless — discard rather than display
+    // it. Guards against a half-written NVS pair from an older firmware or a power
+    // cut between the two puts.
+    if (state.flow.avg_gph_sample_count == 0) state.flow.reset_average();
+
+    avg_gph_value = state.flow.avg_gph;   // display mirror
+    Serial.printf("Loaded total gallons: %.3f  avg gph: %.2f  samples: %u\n",
+                  state.flow.total_gallons_used, state.flow.avg_gph, state.flow.avg_gph_sample_count);
+
+    if (state.flow.smooth_flow && state.flow.avg_gph > 0.0f)
+        state.flow.smooth_flow->fill((int32_t)(state.flow.avg_gph * 100.0f));
 
     get_fuel_settings();
     flow_used_value = state.flow.total_gallons_used;
@@ -61,7 +92,7 @@ void save_flow_totals() {
     AppState &state = AppState::instance();
     prefs.begin("flow_data", false);
     prefs.putFloat("total_gal_used",  state.flow.total_gallons_used);
-    prefs.putFloat("avg_gph",         avg_gph_value);
+    prefs.putFloat("avg_gph",         state.flow.avg_gph);
     prefs.putUInt( "avg_gph_samples", state.flow.avg_gph_sample_count);
     prefs.end();
 }
@@ -76,10 +107,10 @@ static void back_event_cb(lv_event_t *e) {
 static void full_fuel_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         AppState &state = AppState::instance();
-        lv_roller_set_selected(state.ui.roller_left, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
-        lv_roller_set_selected(state.ui.roller_right, FuelSensors::MAX_FUEL_TANKS, LV_ANIM_ON);
-        state.fuel.left_user_setting = FuelSensors::MAX_FUEL_TANKS;
-        state.fuel.right_user_setting = FuelSensors::MAX_FUEL_TANKS;
+        lv_roller_set_selected(state.ui.roller_left, FuelSensors::MAX_TANK_GALLONS, LV_ANIM_ON);
+        lv_roller_set_selected(state.ui.roller_right, FuelSensors::MAX_TANK_GALLONS, LV_ANIM_ON);
+        state.fuel.left_user_setting = FuelSensors::MAX_TANK_GALLONS;
+        state.fuel.right_user_setting = FuelSensors::MAX_TANK_GALLONS;
         save_fuel_settings();
         lv_screen_load(state.ui.screen_gauges);
     }
@@ -98,9 +129,12 @@ static void update_fuel_event_cb(lv_event_t *e) {
 static void clear_avg_gph_event_cb(lv_event_t *e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         AppState &state = AppState::instance();
-        state.flow.avg_gph_sample_count = 0;
-        state.flow.last_pulse_count = state.flow.pulse_count;
-        avg_gph_value = 0.0f;
+        state.flow.reset_average();
+        avg_gph_value = state.flow.avg_gph;   // display mirror
+        noInterrupts();
+        state.flow.last_pulse_count = isr_pulse_count;
+        interrupts();
+        state.flow.last_calc_time_ms = millis();
         if (state.flow.smooth_flow) state.flow.smooth_flow->reset();
         save_flow_totals();
     }
@@ -118,7 +152,7 @@ void switch_to_setup_event_cb(lv_event_t *e) {
 
 static lv_obj_t *make_roller(lv_obj_t *parent, int initial_selection) {
     lv_obj_t *roller = lv_roller_create(parent);
-    lv_roller_set_options(roller, fuel_options, LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_options(roller, fuel_roller_options(), LV_ROLLER_MODE_NORMAL);
     lv_roller_set_selected(roller, initial_selection, LV_ANIM_OFF);
     lv_roller_set_visible_row_count(roller, 3);
     lv_obj_set_style_text_font(roller, &lv_font_montserrat_20, 0);
@@ -154,7 +188,8 @@ void setup_fuel_gui() {
 
     // ── Top bar ───────────────────────────────────────────────
     lv_obj_t *topbar = lv_obj_create(state.ui.screen_setup);
-    lv_obj_set_size(topbar, 300, 52);
+    // Spans the full 480 px screen so the K-FAC button can sit at the true top right.
+    lv_obj_set_size(topbar, 470, 52);
     lv_obj_set_pos(topbar, 1, 2);
     lv_obj_set_style_bg_color(topbar, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(topbar, LV_OPA_COVER, LV_PART_MAIN);
@@ -178,6 +213,17 @@ void setup_fuel_gui() {
     lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
     lv_obj_set_style_text_color(title, lv_color_white(), 0);
     lv_obj_set_pos(title, 150, 10);
+
+    lv_obj_t *btn_kfac = lv_button_create(topbar);
+    lv_obj_set_size(btn_kfac, 85, 34);
+    lv_obj_align(btn_kfac, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_set_style_bg_color(btn_kfac, lv_palette_darken(LV_PALETTE_BLUE_GREY, 2), 0);
+    lv_obj_set_style_radius(btn_kfac, 5, 0);
+    lv_obj_t *lbl_kfac = lv_label_create(btn_kfac);
+    lv_label_set_text(lbl_kfac, "K-FAC");
+    lv_obj_set_style_text_font(lbl_kfac, &lv_font_montserrat_14, 0);
+    lv_obj_center(lbl_kfac);
+    lv_obj_add_event_cb(btn_kfac, switch_to_kfactor_event_cb, LV_EVENT_CLICKED, nullptr);
 
     // ── Roller card ───────────────────────────────────────────
     lv_obj_t *card = lv_obj_create(state.ui.screen_setup);

@@ -1,4 +1,5 @@
 #include <lvgl.h>
+#include <cmath>
 #include "flow_gauge.h"
 #include "app_state.h"
 
@@ -15,16 +16,43 @@ static lv_obj_t *flow_used_value_label = nullptr;
 static lv_obj_t *avg_gph_value_label = nullptr;
 static lv_obj_t *time_to_empty_value_label = nullptr;
 
+// Last value actually rendered, in hundredths so the comparison matches what "%.2f"
+// puts on screen. INT32_MIN forces the first pass to draw.
+static int32_t old_flow_cents   = INT32_MIN;
+static int32_t old_remain_cents = INT32_MIN;
+static int32_t old_used_cents   = INT32_MIN;
+static int32_t old_avg_cents    = INT32_MIN;
+static int32_t old_tte_shown    = INT32_MIN;
+
+// lv_label_set_text_fmt() invalidates the label unconditionally, even when the text
+// is identical — which dirties the canvas and costs a full panel flush. Only write
+// when the rendered digits would actually differ.
+static void set_value_if_changed(lv_obj_t *label, float value, int32_t &old_cents) {
+    int32_t cents = (int32_t)lroundf(value * 100.0f);
+    if (cents == old_cents) return;
+    old_cents = cents;
+    lv_label_set_text_fmt(label, "%.2f", value);
+}
+
 static void flow_anim_timer_cb(lv_timer_t *) {
-    lv_label_set_text_fmt(flow_value_label, "%.2f", flow_value);
-    lv_label_set_text_fmt(remain_value_label, "%.2f", remain_value);
-    lv_label_set_text_fmt(flow_used_value_label, "%.2f", flow_used_value);
-    lv_label_set_text_fmt(avg_gph_value_label, "%.2f", avg_gph_value);
-    if (flow_value > 0.0f) {
+    set_value_if_changed(flow_value_label,      flow_value,      old_flow_cents);
+    set_value_if_changed(remain_value_label,    remain_value,    old_remain_cents);
+    set_value_if_changed(flow_used_value_label, flow_used_value, old_used_cents);
+    set_value_if_changed(avg_gph_value_label,   avg_gph_value,   old_avg_cents);
+
+    // Fold "what's displayed" into one comparable number: -1 for the placeholder,
+    // otherwise HHMM.
+    int32_t tte_shown = (flow_value > 0.0f)
+        ? (time_to_empty_hours_value * 100 + time_to_empty_minutes_value)
+        : -1;
+    if (tte_shown == old_tte_shown) return;
+    old_tte_shown = tte_shown;
+
+    if (tte_shown < 0) {
+        lv_label_set_text(time_to_empty_value_label, "HH:MM");
+    } else {
         lv_label_set_text_fmt(time_to_empty_value_label, "%02d:%02d",
                              (int)time_to_empty_hours_value, (int)time_to_empty_minutes_value);
-    } else {
-        lv_label_set_text(time_to_empty_value_label, "HH:MM");
     }
 }
 
@@ -32,7 +60,6 @@ struct FlowLabel {
     const char *label_text;
     int label_x;
     int label_y;
-    const char *value_format;
     int value_x;
     int value_y;
     lv_obj_t **value_ref;
@@ -41,7 +68,7 @@ struct FlowLabel {
     int unit_y;
 };
 
-static lv_obj_t *create_flow_gph(lv_obj_t *cont, const FlowLabel &cfg) {
+static void create_flow_gph(lv_obj_t *cont, const FlowLabel &cfg) {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, cfg.label_text);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_18, 0);
@@ -60,8 +87,6 @@ static lv_obj_t *create_flow_gph(lv_obj_t *cont, const FlowLabel &cfg) {
     lv_obj_set_style_text_font(unit, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(unit, lv_color_white(), 0);
     lv_obj_align(unit, LV_ALIGN_TOP_LEFT, cfg.unit_x, cfg.unit_y);
-
-    return value;
 }
 
 void flow_gauge(int gauge_timer_value) {
@@ -74,19 +99,19 @@ void flow_gauge(int gauge_timer_value) {
     lv_obj_align(flow_cont, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
     FlowLabel flow_cfg = {
-        "Flow:", -15, 4, "%.2f", 38, 0, &flow_value_label, "gph", 95, 4};
+        "Flow:", -15, 4, 38, 0, &flow_value_label, "gph", 95, 4};
     create_flow_gph(flow_cont, flow_cfg);
 
     FlowLabel remain_cfg = {
-        "Rem: ", -15, 44, "%.2f", 38, 40, &remain_value_label, " g", 95, 44};
+        "Rem: ", -15, 44, 38, 40, &remain_value_label, " g", 95, 44};
     create_flow_gph(flow_cont, remain_cfg);
 
     FlowLabel used_cfg = {
-        "Used: ", -15, 84, "%.2f", 38, 80, &flow_used_value_label, " g", 95, 84};
+        "Used: ", -15, 84, 38, 80, &flow_used_value_label, " g", 95, 84};
     create_flow_gph(flow_cont, used_cfg);
 
     FlowLabel avg_cfg = {
-        "Avg: ", -15, 124, "%.2f", 38, 120, &avg_gph_value_label, "gph", 95, 124};
+        "Avg: ", -15, 124, 38, 120, &avg_gph_value_label, "gph", 95, 124};
     create_flow_gph(flow_cont, avg_cfg);
 
     lv_obj_t *time_label = lv_label_create(flow_cont);

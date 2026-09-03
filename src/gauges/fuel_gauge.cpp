@@ -118,7 +118,8 @@ static void create_fuel_gauge(const FuelGaugeConfig &cfg) {
     lv_obj_set_style_length(needle, 40, LV_PART_MAIN);
     lv_obj_set_style_line_rounded(needle, cfg.needle_rounded, LV_PART_MAIN);
     lv_obj_set_style_pad_right(needle, cfg.needle_pad_right, LV_PART_MAIN);
-    lv_scale_set_line_needle_value(scale, needle, 50, cfg.initial_value);
+    // Length must match the update callbacks, or the needle changes size on first read.
+    lv_scale_set_line_needle_value(scale, needle, 100, cfg.initial_value);
 
     lv_obj_t *circle = lv_obj_create(state.ui.screen_gauges);
     lv_obj_set_size(circle, 108, 108);

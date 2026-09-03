@@ -13,17 +13,21 @@ static lv_obj_t *lines[11] = {nullptr};
 static const char *custom_labels[] = {"20", "15", "10", "5", "0", nullptr};
 
 static void flaps_anim_timer_cb(lv_timer_t *) {
-    if (old_Flaps_position_value == Flaps_position_value) return;
-    old_Flaps_position_value = Flaps_position_value;
+    // Clamp into a local. Writing back to the global would fight the sensor callback
+    // that owns it, and comparing the unclamped value against a clamped old_ would
+    // re-render every tick forever once the ADC read outside 0..11.
+    int32_t position = Flaps_position_value;
+    if (position > 11) position = 11;
+    if (position < 0) position = 0;
 
-    if (Flaps_position_value > 11) Flaps_position_value = 11;
-    if (Flaps_position_value < 0) Flaps_position_value = 0;
+    if (old_Flaps_position_value == position) return;
+    old_Flaps_position_value = position;
 
-    int32_t inverted_flaps_position = 11 - Flaps_position_value;
+    int32_t inverted_flaps_position = 11 - position;
 
     Serial.printf("Inverted Flaps_position_value: %" PRId32 "\n", inverted_flaps_position);
 
-    for (int i = 0; i <= 11; i++) {
+    for (int i = 0; i < 11; i++) {
         if (i >= inverted_flaps_position) {
             lv_obj_add_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
         }

@@ -17,12 +17,6 @@ int32_t read_and_clamp_adc(int raw_value,
                            int16_t lo, int16_t hi,
                            float scale);
 
-// Calculate flow metrics from pulse count
-void calculate_flow_metrics(uint32_t current_pulses,
-                           uint32_t last_pulses,
-                           float &gph_out,
-                           float &gallons_out);
-
 // Determine fuel color zone (red/yellow/green)
 lv_color_t get_fuel_zone_color(int32_t fuel_percentage);
 

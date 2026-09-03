@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <lvgl.h>
 #include "sensors.h"
+#include "hardware_config.h"
 
 // ── Fuel System State ─────────────────────────────────
 struct FuelSystem {
@@ -26,14 +27,38 @@ struct ADCSystem {
 struct FlowSystem {
     float current_gph;
     float total_gallons_used;
-    uint32_t avg_gph_sample_count = 0;
     float remaining;
     float used;
     int32_t time_to_empty_hours;
     int32_t time_to_empty_minutes;
-    uint32_t pulse_count;
-    uint32_t last_pulse_count;
-    uint32_t last_pulse_time_ms = 0;
+
+    // Running mean of raw_gph and the sample count it is divided by. These are two
+    // halves of ONE value: they must be reset together and persisted together, so
+    // reset them only through reset_average() and never touch either alone.
+    // avg_gph_value in flow_gauge.h is a display mirror of avg_gph, not the source.
+    float avg_gph = 0.0f;
+    uint32_t avg_gph_sample_count = 0;
+
+    void reset_average() {
+        avg_gph = 0.0f;
+        avg_gph_sample_count = 0;
+    }
+
+    // Fold one sample into the running mean. Incrementing the count first is what
+    // makes the first sample land on itself rather than on half of itself.
+    void add_average_sample(float raw_gph) {
+        avg_gph_sample_count++;
+        avg_gph += (raw_gph - avg_gph) / (float)avg_gph_sample_count;
+    }
+
+    // Owned by flow_sensor_timer_cb(): watermark and timestamp of the last rate calc.
+    // The raw ISR counters live at file scope in main.cpp — see sensors.h.
+    uint32_t last_pulse_count = 0;
+    uint32_t last_calc_time_ms = 0;
+
+    // Transducer K-factor in thousands of pulses per gallon (68 => 68,000). Set on
+    // the K-FAC screen, persisted to NVS, restored at startup.
+    int k_factor_thousands = FlowSensor::DEFAULT_K_FACTOR_THOUSANDS;
     SmoothingBuffer *smooth_flow = nullptr;
 };
 
@@ -56,9 +81,13 @@ struct StartupAnimation {
 struct LVGLState {
     lv_obj_t *screen_gauges = nullptr;
     lv_obj_t *screen_setup = nullptr;
+    lv_obj_t *screen_kfactor = nullptr;
     lv_obj_t *roller_left = nullptr;
     lv_obj_t *roller_right = nullptr;
+    lv_obj_t *roller_kfactor = nullptr;
     bool first_initialization = true;
+    // False if setup() bailed out early; loop() must not touch LVGL or the panel.
+    bool init_complete = false;
 };
 
 // ── Global Application State ──────────────────────────
